@@ -1,65 +1,156 @@
-import Image from "next/image";
+import { AdminShell } from "@/components/admin-shell";
+import { SectionCard, StatusPill } from "@/components/ui";
+import {
+  callQueue,
+  kpiCards,
+  onboardingChecklist,
+  pipelineStages,
+  responsibilities,
+  roadmap,
+} from "@/lib/admin-data";
+import { requireSuperAdminPageSession } from "@/lib/server/super-admin-auth";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const session = await requireSuperAdminPageSession();
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <AdminShell
+      currentPath="/"
+      title="Roomly MVP 管制画面"
+      description="このプロジェクトは MOGCIA 側の管理面を担当します。ホテルアカウント発行、客室QR運用、AI基盤、リアルタイム通話基盤、運用監視をまとめて扱います。"
+      sessionEmail={session.email}
+    >
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {kpiCards.map((card) => (
+          <div key={card.label} className="panel p-6">
+            <p className="eyebrow">{card.label}</p>
+            <p className="metric-value mt-4">{card.value}</p>
+            <p className="mt-4 text-sm leading-6 text-stone-600">{card.note}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <SectionCard
+          title="MOGCIA の担当範囲"
+          description="ホテル側アプリとゲスト側アプリは別プロジェクトです。この管理画面では、MVP前に固定すべきバックエンドと運用の責務を扱います。"
+        >
+          <div className="grid gap-4 md:grid-cols-3">
+            {responsibilities.map((item) => (
+              <article
+                key={item.title}
+                className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5"
+              >
+                <h4 className="text-base font-semibold text-stone-950">{item.title}</h4>
+                <p className="mt-3 text-sm leading-6 text-stone-600">{item.body}</p>
+              </article>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="ホテル導入チェックリスト"
+          description="MVP の手動運用で、super_admin が各ホテル導入時に必ず実施する作業です。"
+        >
+          <ol className="space-y-3">
+            {onboardingChecklist.map((item, index) => (
+              <li
+                key={item}
+                className="flex gap-4 rounded-3xl border border-[var(--border)] px-4 py-4"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-sm font-semibold text-white">
+                  {index + 1}
+                </span>
+                <span className="pt-1 text-sm leading-6 text-stone-700">{item}</span>
+              </li>
+            ))}
+          </ol>
+        </SectionCard>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+        <SectionCard
+          title="AI・リアルタイム基盤"
+          description="バックエンドと通信インフラの責務整理です。"
+        >
+          <div className="space-y-4">
+            {pipelineStages.map((stage) => (
+              <div
+                key={stage.name}
+                className="rounded-3xl border border-[var(--border)] bg-white px-5 py-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-base font-semibold text-stone-950">{stage.name}</h4>
+                    <p className="mt-1 text-sm text-stone-500">{stage.owner}</p>
+                  </div>
+                  <StatusPill
+                    tone={
+                      stage.status === "ready"
+                        ? "success"
+                        : stage.status === "in_progress"
+                          ? "warning"
+                          : "neutral"
+                    }
+                  >
+                    {stage.status === "ready"
+                      ? "対応済み"
+                      : stage.status === "in_progress"
+                        ? "対応中"
+                        : "予定"}
+                  </StatusPill>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-stone-600">{stage.description}</p>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="フロント着信キューの想定状態"
+          description="着信キュー制御、緊急通知、チャットへのフォールバックを想定した状態例です。"
+        >
+          <div className="space-y-4">
+            {callQueue.map((item) => (
+              <div
+                key={`${item.hotel}-${item.roomId}`}
+                className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] px-5 py-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-stone-950">
+                      {item.hotel} / Room {item.roomNumber}
+                    </p>
+                    <p className="mt-1 text-sm text-stone-500">{item.guestLanguage}</p>
+                  </div>
+                  <StatusPill tone={item.priority === "high" ? "danger" : "neutral"}>
+                    {item.priority === "high" ? "緊急" : "通常"}
+                  </StatusPill>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-stone-600">{item.waitingFor}</p>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      </section>
+
+      <SectionCard
+        title="開発の進め方"
+        description="プロジェクト分割と固定方針を踏まえた実装順です。"
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          {roadmap.map((item) => (
+            <article
+              key={item.phase}
+              className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <p className="eyebrow">{item.phase}</p>
+              <p className="mt-3 text-base font-semibold text-stone-950">{item.focus}</p>
+            </article>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </SectionCard>
+    </AdminShell>
   );
 }
