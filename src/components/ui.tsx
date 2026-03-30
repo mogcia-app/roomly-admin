@@ -12,12 +12,12 @@ export function SectionCard({
   className?: string;
 }) {
   return (
-    <section className={`panel p-6 md:p-7 ${className}`}>
-      <div className="flex flex-col gap-2 border-b border-[var(--border)] pb-4">
+    <section className={`panel h-full p-6 md:p-7 ${className}`}>
+      <div className="flex flex-col gap-2 border-b border-[var(--border)] pb-5">
         <h3 className="text-xl font-semibold tracking-[-0.04em] text-stone-950">{title}</h3>
         {description ? <p className="text-sm leading-6 text-stone-600">{description}</p> : null}
       </div>
-      <div className="pt-5">{children}</div>
+      <div className="pt-6">{children}</div>
     </section>
   );
 }

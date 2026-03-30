@@ -48,14 +48,14 @@ export function RoomQrGenerationForm({ hotels }: { hotels: HotelOption[] }) {
 
   return (
     <div className="space-y-4">
-      <form className="grid gap-4" onSubmit={handleSubmit}>
-        <label className="grid gap-2 text-sm text-stone-700">
+      <form className="form-grid" onSubmit={handleSubmit}>
+        <label className="form-label">
           対象ホテル
           <select
             name="hotelId"
             required
             defaultValue=""
-            className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+            className="form-select"
           >
             <option value="" disabled>
               ホテルを選択
@@ -71,18 +71,18 @@ export function RoomQrGenerationForm({ hotels }: { hotels: HotelOption[] }) {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="form-submit"
         >
           {isSubmitting ? "生成中..." : "客室QRを一括生成"}
         </button>
       </form>
 
       {error ? (
-        <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
+        <p className="form-feedback form-feedback-error">{error}</p>
       ) : null}
 
       {message ? (
-        <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p>
+        <p className="form-feedback form-feedback-success">{message}</p>
       ) : null}
     </div>
   );

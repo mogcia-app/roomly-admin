@@ -49,46 +49,46 @@ export function HotelAdminProvisionForm() {
 
   return (
     <div className="space-y-4">
-      <form className="grid gap-4" onSubmit={handleSubmit}>
-        <label className="grid gap-2 text-sm text-stone-700">
+      <form className="form-grid" onSubmit={handleSubmit}>
+        <label className="form-label">
           ホテル名
           <input
             name="hotelName"
             required
-            className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+            className="form-input"
             placeholder="Akari Ryokan"
           />
         </label>
 
-        <label className="grid gap-2 text-sm text-stone-700">
+        <label className="form-label">
           プラン
           <input
             name="plan"
             required
             defaultValue="Basic"
-            className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+            className="form-input"
           />
         </label>
 
-        <label className="grid gap-2 text-sm text-stone-700">
+        <label className="form-label">
           hotel_admin メールアドレス
           <input
             name="hotelAdminEmail"
             type="email"
             required
-            className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+            className="form-input"
             placeholder="owner@example.com"
           />
         </label>
 
-        <label className="grid gap-2 text-sm text-stone-700">
+        <label className="form-label">
           仮パスワード
           <input
             name="temporaryPassword"
             type="password"
             minLength={8}
             required
-            className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+            className="form-input"
             placeholder="8文字以上"
           />
         </label>
@@ -96,18 +96,18 @@ export function HotelAdminProvisionForm() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="form-submit"
         >
           {isSubmitting ? "作成中..." : "hotel_admin を作成"}
         </button>
       </form>
 
       {error ? (
-        <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
+        <p className="form-feedback form-feedback-error">{error}</p>
       ) : null}
 
       {result ? (
-        <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="form-feedback form-feedback-success">
           hotel_admin アカウントを発行しました。対象メールは <strong>{result.email}</strong>、
           発行された hotel_id は <strong>{result.hotelId}</strong>、Auth uid は{" "}
           <strong>{result.userId}</strong> です。

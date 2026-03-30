@@ -21,6 +21,7 @@ export type Room = {
   id: string;
   hotelId: string;
   roomNumber: string;
+  displayName?: string;
   floor?: string;
   roomType?: string;
 };
@@ -30,6 +31,7 @@ export type Stay = {
   hotelId: string;
   roomId: string;
   roomNumber?: string;
+  roomDisplayName?: string;
   language?: string;
   isActive: boolean;
   checkIn: string | null;
@@ -93,6 +95,7 @@ export type SuperAdminProvisionInput = {
 
 export type RoomImportInput = {
   roomNumber: string;
+  displayName?: string;
   floor?: string;
   roomType?: string;
 };
@@ -178,6 +181,7 @@ export async function listRooms(hotelId?: string) {
       id: doc.id,
       hotelId: String(data.hotel_id ?? ""),
       roomNumber: String(data.room_number ?? ""),
+      displayName: data.display_name ? String(data.display_name) : undefined,
       floor: data.floor ? String(data.floor) : undefined,
       roomType: data.room_type ? String(data.room_type) : undefined,
     };
@@ -208,6 +212,7 @@ export async function listActiveStays(hotelId?: string) {
       hotelId: String(data.hotel_id ?? ""),
       roomId: String(data.room_id ?? ""),
       roomNumber: room?.roomNumber,
+      roomDisplayName: room?.displayName,
       language: data.language ? String(data.language) : undefined,
       isActive: Boolean(data.is_active),
       checkIn: timestampToIso(data.check_in),
@@ -471,7 +476,11 @@ export async function generateRoomQrsForHotel(hotelId: string) {
   const { db } = getFirebaseAdminServices();
   const records = await Promise.all(
     rooms.map(async (room) => {
-      const guestUrl = buildGuestRoomUrl(room.id);
+      const guestUrl = buildGuestRoomUrl({
+        hotelId: room.hotelId,
+        roomId: room.id,
+        roomNumber: room.roomNumber,
+      });
       const qrSvg = await QRCode.toString(guestUrl, {
         type: "svg",
         margin: 1,
@@ -572,7 +581,11 @@ export async function generateRoomQrPdf(hotelId: string) {
 
   const roomPayloads = await Promise.all(
     rooms.map(async (room) => {
-      const guestUrl = buildGuestRoomUrl(room.id);
+      const guestUrl = buildGuestRoomUrl({
+        hotelId: room.hotelId,
+        roomId: room.id,
+        roomNumber: room.roomNumber,
+      });
       const qrDataUrl = await QRCode.toDataURL(guestUrl, {
         margin: 1,
         width: 360,
@@ -624,7 +637,7 @@ export async function generateRoomQrPdf(hotelId: string) {
       color: rgb(0.14, 0.09, 0.08),
     });
 
-    page.drawText(`客室 ${room.roomNumber}`, {
+    page.drawText(`客室 ${room.roomNumber}${room.displayName ? ` / ${room.displayName}` : ""}`, {
       x: x + 16,
       y: y + cardHeight - 48,
       size: 16,
@@ -760,6 +773,7 @@ export async function provisionHotelAdmin(input: HotelProvisionInput) {
 export async function importRoomsForHotel(hotelId: string, rooms: RoomImportInput[]) {
   const normalizedRooms = rooms.map((room) => ({
     roomNumber: room.roomNumber.trim(),
+    displayName: room.displayName?.trim() || undefined,
     floor: room.floor?.trim() || undefined,
     roomType: room.roomType?.trim() || undefined,
   }));
@@ -799,6 +813,7 @@ export async function importRoomsForHotel(hotelId: string, rooms: RoomImportInpu
       room_id: ref.id,
       hotel_id: hotelId,
       room_number: room.roomNumber,
+      display_name: room.displayName ?? null,
       floor: room.floor ?? null,
       room_type: room.roomType ?? null,
       created_at: FieldValue.serverTimestamp(),
@@ -808,6 +823,52 @@ export async function importRoomsForHotel(hotelId: string, rooms: RoomImportInpu
   await batch.commit();
 
   return { imported: normalizedRooms.length };
+}
+
+export async function createSequentialRoomsForHotel(hotelId: string, roomCount: number) {
+  if (!Number.isInteger(roomCount) || roomCount < 1 || roomCount > 500) {
+    throw new Error("roomCount は 1 から 500 の整数で指定してください。");
+  }
+
+  const rooms = Array.from({ length: roomCount }, (_, index) => ({
+    roomNumber: String(101 + index),
+  }));
+
+  return importRoomsForHotel(hotelId, rooms);
+}
+
+export async function updateRoomDisplayName(
+  hotelId: string,
+  roomId: string,
+  displayName: string | null,
+) {
+  const { db } = getFirebaseAdminServices();
+  const roomRef = db.collection("rooms").doc(roomId);
+  const snapshot = await roomRef.get();
+
+  if (!snapshot.exists) {
+    throw new Error("対象の客室が見つかりません。");
+  }
+
+  const data = snapshot.data() ?? {};
+
+  if (String(data.hotel_id ?? "") !== hotelId) {
+    throw new Error("対象ホテルに紐づかない客室です。");
+  }
+
+  await roomRef.set(
+    {
+      display_name: displayName?.trim() || null,
+      updated_at: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  return {
+    roomId,
+    hotelId,
+    displayName: displayName?.trim() || null,
+  };
 }
 
 export async function expireStay(stayId: string, reason: string) {

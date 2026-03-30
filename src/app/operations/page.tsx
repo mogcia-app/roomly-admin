@@ -25,13 +25,11 @@ const riskControls = [
 ] as const;
 
 export default async function OperationsPage() {
-  const session = await requireSuperAdminPageSession();
+  await requireSuperAdminPageSession();
   return (
     <AdminShell
-      currentPath="/operations"
       title="運用監視"
       description="ゲスト側・ホテル側アプリの裏側にあるバックエンド、AI基盤、リアルタイムキュー制御、滞在失効、各種アラートを監視する画面です。"
-      sessionEmail={session.email}
     >
       <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <SectionCard

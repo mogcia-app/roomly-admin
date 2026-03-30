@@ -28,14 +28,12 @@ const apiDecisions = [
 ] as const;
 
 export default async function ArchitecturePage() {
-  const session = await requireSuperAdminPageSession();
+  await requireSuperAdminPageSession();
 
   return (
     <AdminShell
-      currentPath="/architecture"
       title="設計とデータモデル"
       description="ホテル側・ゲスト側が別リポジトリでも、このプロジェクトで守るべき固定設計をここに集約します。"
-      sessionEmail={session.email}
     >
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <SectionCard

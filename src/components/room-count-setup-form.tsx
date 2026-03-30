@@ -1,31 +1,27 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type HotelOption = {
   id: string;
   name: string;
 };
 
-type HearingSheetLink = {
-  id: string;
-  url: string;
-  token: string;
-  status: string;
-};
-
-export function HearingSheetLinkForm({ hotels }: { hotels: HotelOption[] }) {
+export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [link, setLink] = useState<HearingSheetLink | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    setLink(null);
+    setMessage(null);
     setIsSubmitting(true);
 
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const hotelId = String(formData.get("hotelId") ?? "");
 
     if (!hotelId) {
@@ -34,18 +30,24 @@ export function HearingSheetLinkForm({ hotels }: { hotels: HotelOption[] }) {
       return;
     }
 
-    const response = await fetch(`/api/admin/hotels/${hotelId}/hearing-sheet`, {
+    const response = await fetch(`/api/admin/hotels/${hotelId}/rooms`, {
       method: "POST",
+      body: formData,
     });
-    const payload = (await response.json()) as { error?: string; link?: HearingSheetLink };
+
+    const payload = (await response.json()) as { error?: string; imported?: number };
     setIsSubmitting(false);
 
-    if (!response.ok || !payload.link) {
-      setError(payload.error ?? "ヒアリングシートURLの発行に失敗しました。");
+    if (!response.ok) {
+      setError(payload.error ?? "客室数の登録に失敗しました。");
       return;
     }
 
-    setLink(payload.link);
+    setMessage(
+      `${payload.imported ?? 0} 室分の客室を登録しました。部屋番号は 101 からの連番で作成しています。`,
+    );
+    form.reset();
+    router.refresh();
   }
 
   return (
@@ -70,12 +72,30 @@ export function HearingSheetLinkForm({ hotels }: { hotels: HotelOption[] }) {
           </select>
         </label>
 
+        <label className="form-label">
+          部屋数
+          <input
+            name="roomCount"
+            type="number"
+            min={1}
+            max={500}
+            required
+            className="form-input"
+            placeholder="20"
+          />
+        </label>
+
+        <p className="form-hint">
+          既に客室が登録されているホテルには追加できません。最小運用向けに、部屋番号は
+          <code>101</code> から自動採番します。
+        </p>
+
         <button
           type="submit"
           disabled={isSubmitting}
           className="form-submit"
         >
-          {isSubmitting ? "発行中..." : "ヒアリングシートURLを発行"}
+          {isSubmitting ? "登録中..." : "部屋数を登録"}
         </button>
       </form>
 
@@ -83,13 +103,8 @@ export function HearingSheetLinkForm({ hotels }: { hotels: HotelOption[] }) {
         <p className="form-feedback form-feedback-error">{error}</p>
       ) : null}
 
-      {link ? (
-        <div className="form-feedback form-feedback-success">
-          ヒアリングシートURLを発行しました。
-          <div className="mt-2 break-all rounded-xl border border-emerald-100 bg-white/80 px-3 py-2 text-xs text-stone-700">
-            {link.url}
-          </div>
-        </div>
+      {message ? (
+        <p className="form-feedback form-feedback-success">{message}</p>
       ) : null}
     </div>
   );

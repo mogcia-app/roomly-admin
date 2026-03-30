@@ -25,7 +25,7 @@ export default async function HotelsPage({
 }: {
   searchParams?: Promise<{ stayHotelId?: string }>;
 }) {
-  const session = await requireSuperAdminPageSession();
+  await requireSuperAdminPageSession();
   const configured = isFirebaseAdminConfigured();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const stayHotelId = resolvedSearchParams?.stayHotelId?.trim() || undefined;
@@ -61,10 +61,8 @@ export default async function HotelsPage({
 
   return (
     <AdminShell
-      currentPath="/hotels"
       title="ホテル導入・発行管理"
       description="MOGCIA 側で hotel_admin の発行、客室マスタ登録、滞在状態の確認を行い、ホテル側アプリとゲスト側アプリの運用データを整える画面です。"
-      sessionEmail={session.email}
     >
       {!configured ? (
         <section className="panel border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-800">
@@ -273,6 +271,7 @@ export default async function HotelsPage({
                     <div>
                       <p className="text-sm font-semibold text-stone-950">
                         客室 {stay.roomNumber ?? stay.roomId}
+                        {stay.roomDisplayName ? ` (${stay.roomDisplayName})` : ""}
                       </p>
                       <p className="mt-1 font-mono text-xs text-stone-500">hotel_id: {stay.hotelId}</p>
                     </div>
