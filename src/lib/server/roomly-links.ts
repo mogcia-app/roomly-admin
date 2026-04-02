@@ -14,17 +14,17 @@ function requireUrlEnv(name: string) {
 
 export type SignedRoomTokenPayload = {
   v: 1;
-  hotelId: string;
-  roomId: string;
-  roomNumber: string;
+  hotel_id: string;
+  room_id: string;
+  room_number: string;
   iat: number;
   exp: number;
 };
 
 type GuestRoomLinkInput = {
-  hotelId: string;
-  roomId: string;
-  roomNumber: string;
+  hotel_id: string;
+  room_id: string;
+  room_number: string;
 };
 
 const ROOM_QR_TOKEN_VERSION = 1;
@@ -74,9 +74,9 @@ export function createSignedRoomToken(input: GuestRoomLinkInput) {
   const issuedAt = Math.floor(Date.now() / 1000);
   const payload = {
     v: ROOM_QR_TOKEN_VERSION,
-    hotelId: input.hotelId,
-    roomId: input.roomId,
-    roomNumber: input.roomNumber,
+    hotel_id: input.hotel_id,
+    room_id: input.room_id,
+    room_number: input.room_number,
     iat: issuedAt,
     exp: issuedAt + getRoomQrTokenTtlSeconds(),
   } satisfies SignedRoomTokenPayload;
@@ -95,8 +95,8 @@ export function verifySignedRoomToken(token: string) {
   }
 
   const expectedSignature = signRoomTokenPayload(encodedPayload);
-  const providedSignature = Buffer.from(encodedSignature);
-  const expectedSignatureBuffer = Buffer.from(expectedSignature);
+  const providedSignature = decodeBase64Url(encodedSignature);
+  const expectedSignatureBuffer = decodeBase64Url(expectedSignature);
 
   if (
     providedSignature.length !== expectedSignatureBuffer.length ||
@@ -112,7 +112,7 @@ export function verifySignedRoomToken(token: string) {
     throw new Error("未対応の room token バージョンです。");
   }
 
-  if (!parsed.hotelId || !parsed.roomId || !parsed.roomNumber) {
+  if (!parsed.hotel_id || !parsed.room_id || !parsed.room_number) {
     throw new Error("room token の中身が不正です。");
   }
 
