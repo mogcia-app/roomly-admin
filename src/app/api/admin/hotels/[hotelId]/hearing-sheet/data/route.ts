@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-  getHearingSheetByToken,
-  submitHearingSheetByToken,
+  saveHearingSheetByHotelId,
   type HearingSheetPayload,
 } from "@/lib/server/roomly-admin";
+import { requireSuperAdminRequest } from "@/lib/server/super-admin-auth";
 
 export const runtime = "nodejs";
 
@@ -19,33 +19,13 @@ function parseNoteItems(items: unknown) {
     : [];
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
-  try {
-    const { token } = await params;
-    const data = await getHearingSheetByToken(token);
-
-    if (!data) {
-      return NextResponse.json({ error: "ヒアリングシートURLが無効です。" }, { status: 404 });
-    }
-
-    return NextResponse.json(data);
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "ヒアリングシートの取得に失敗しました。" },
-      { status: 500 },
-    );
-  }
-}
-
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
+  { params }: { params: Promise<{ hotelId: string }> },
 ) {
   try {
-    const { token } = await params;
+    await requireSuperAdminRequest(request);
+    const { hotelId } = await params;
     const body = (await request.json()) as Partial<HearingSheetPayload>;
 
     const payload: HearingSheetPayload = {
@@ -173,12 +153,11 @@ export async function POST(
       );
     }
 
-    const result = await submitHearingSheetByToken(token, payload);
-
+    const result = await saveHearingSheetByHotelId(hotelId, payload);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "ヒアリングシートの送信に失敗しました。" },
+      { error: error instanceof Error ? error.message : "ヒアリングシートの保存に失敗しました。" },
       { status: 500 },
     );
   }

@@ -9,6 +9,11 @@ import QRCode from "qrcode";
 import { getFirebaseAdminServices, isFirebaseAdminConfigured } from "@/lib/server/firebase-admin";
 import { buildGuestRoomUrl, buildHearingSheetUrl } from "@/lib/server/roomly-links";
 
+type HearingSheetNoteItem = {
+  label: string;
+  content: string;
+};
+
 export type Hotel = {
   id: string;
   name: string;
@@ -61,14 +66,93 @@ export type RoomQrRecord = {
 export type HearingSheetPayload = {
   contactName: string;
   contactEmail: string;
-  checkInTime: string;
-  checkOutTime: string;
-  wifiPassword: string;
-  breakfastInfo: string;
-  parkingInfo: string;
-  amenitiesInfo: string;
-  emergencyNote: string;
-  customQa: string;
+  frontDeskHours: string;
+  wifiNetworks: {
+    floor: string;
+    ssid: string;
+    password: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  breakfastEntries: {
+    style: string;
+    hours: string;
+    location: string;
+    price: string;
+    reservationRequired: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  bathEntries: {
+    name: string;
+    hours: string;
+    location: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  facilityEntries: {
+    name: string;
+    hours: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  facilityLocationEntries: {
+    name: string;
+    floor: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  amenityEntries: {
+    name: string;
+    inRoom: string;
+    availableOnRequest: string;
+    price: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  parkingEntries: {
+    name: string;
+    capacity: string;
+    price: string;
+    hours: string;
+    reservationRequired: string;
+    location: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  emergencyEntries: {
+    category: string;
+    contact: string;
+    steps: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  faqEntries: {
+    question: string;
+    answer: string;
+  }[];
+  checkoutEntries: {
+    time: string;
+    method: string;
+    keyReturnLocation: string;
+    lateCheckoutPolicy: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  roomServiceEntries: {
+    menuName: string;
+    price: string;
+    orderMethod: string;
+    hours: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  transportEntries: {
+    companyName: string;
+    serviceType: string;
+    phone: string;
+    hours: string;
+    priceNote: string;
+    notes: HearingSheetNoteItem[];
+  }[];
+  nearbySpotEntries: {
+    name: string;
+    category: string;
+    distance: string;
+    hours: string;
+    location: string;
+    notes: HearingSheetNoteItem[];
+  }[];
 };
 
 export type HearingSheetSummary = {
@@ -76,6 +160,28 @@ export type HearingSheetSummary = {
   hotelName: string;
   contactName?: string;
   contactEmail?: string;
+  updatedAt: string | null;
+  submittedAt: string | null;
+};
+
+export type HearingSheetData = {
+  hotelId: string;
+  contactName: string;
+  contactEmail: string;
+  frontDeskHours: string;
+  wifiNetworks: HearingSheetPayload["wifiNetworks"];
+  breakfastEntries: HearingSheetPayload["breakfastEntries"];
+  bathEntries: HearingSheetPayload["bathEntries"];
+  facilityEntries: HearingSheetPayload["facilityEntries"];
+  facilityLocationEntries: HearingSheetPayload["facilityLocationEntries"];
+  amenityEntries: HearingSheetPayload["amenityEntries"];
+  parkingEntries: HearingSheetPayload["parkingEntries"];
+  emergencyEntries: HearingSheetPayload["emergencyEntries"];
+  faqEntries: HearingSheetPayload["faqEntries"];
+  checkoutEntries: HearingSheetPayload["checkoutEntries"];
+  roomServiceEntries: HearingSheetPayload["roomServiceEntries"];
+  transportEntries: HearingSheetPayload["transportEntries"];
+  nearbySpotEntries: HearingSheetPayload["nearbySpotEntries"];
   updatedAt: string | null;
   submittedAt: string | null;
 };
@@ -114,6 +220,26 @@ function timestampToIso(value: unknown) {
   }
 
   return null;
+}
+
+function parseNoteItems(noteEntries: unknown, legacyNote?: unknown) {
+  if (Array.isArray(noteEntries)) {
+    return noteEntries.map((entry) => ({
+      label: String(entry?.label ?? ""),
+      content: String(entry?.content ?? ""),
+    }));
+  }
+
+  if (legacyNote) {
+    return [
+      {
+        label: "補足",
+        content: String(legacyNote),
+      },
+    ];
+  }
+
+  return [];
 }
 
 export async function listHotels() {
@@ -319,7 +445,7 @@ export async function getHearingSheetLinkByToken(token: string) {
   } satisfies HearingSheetLink;
 }
 
-export async function getHearingSheetByHotelId(hotelId: string) {
+export async function getHearingSheetByHotelId(hotelId: string): Promise<HearingSheetData | null> {
   if (!isFirebaseAdminConfigured()) {
     return null;
   }
@@ -337,14 +463,202 @@ export async function getHearingSheetByHotelId(hotelId: string) {
     hotelId,
     contactName: String(data.contact_name ?? ""),
     contactEmail: String(data.contact_email ?? ""),
-    checkInTime: String(data.basic_info?.check_in_time ?? ""),
-    checkOutTime: String(data.basic_info?.check_out_time ?? ""),
-    wifiPassword: String(data.basic_info?.wifi_password ?? ""),
-    breakfastInfo: String(data.facilities?.breakfast_info ?? ""),
-    parkingInfo: String(data.facilities?.parking_info ?? ""),
-    amenitiesInfo: String(data.amenities?.info ?? ""),
-    emergencyNote: String(data.emergency?.note ?? ""),
-    customQa: String(data.custom_qa ?? ""),
+    frontDeskHours: String(data.operations?.front_desk_hours ?? ""),
+    wifiNetworks: Array.isArray(data.wifi?.networks)
+      ? data.wifi.networks.map((entry: Record<string, unknown>) => ({
+          floor: String(entry?.floor ?? ""),
+          ssid: String(entry?.ssid ?? ""),
+          password: String(entry?.password ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.wifi?.info || data.basic_info?.wifi_password
+        ? [
+            {
+              floor: "全館",
+              ssid: "",
+              password: "",
+              notes: parseNoteItems(undefined, data.wifi?.info ?? data.basic_info?.wifi_password),
+            },
+          ]
+        : [],
+    breakfastEntries: Array.isArray(data.facilities?.breakfast_entries)
+      ? data.facilities.breakfast_entries.map((entry: Record<string, unknown>) => ({
+          style: String(entry?.style ?? ""),
+          hours: String(entry?.hours ?? ""),
+          location: String(entry?.location ?? ""),
+          price: String(entry?.price ?? ""),
+          reservationRequired: String(entry?.reservation_required ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.facilities?.breakfast_info
+        ? [
+            {
+              style: "",
+              hours: "",
+              location: "",
+              price: "",
+              reservationRequired: "",
+              notes: parseNoteItems(undefined, data.facilities?.breakfast_info),
+            },
+          ]
+        : [],
+    bathEntries: Array.isArray(data.facilities?.bath_entries)
+      ? data.facilities.bath_entries.map((entry: Record<string, unknown>) => ({
+          name: String(entry?.name ?? ""),
+          hours: String(entry?.hours ?? ""),
+          location: String(entry?.location ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.facilities?.bath_info
+        ? [
+            {
+              name: "大浴場・温泉",
+              hours: "",
+              location: "",
+              notes: parseNoteItems(undefined, data.facilities?.bath_info),
+            },
+          ]
+        : [],
+    facilityEntries: Array.isArray(data.facilities?.entries)
+      ? data.facilities.entries.map((entry: Record<string, unknown>) => ({
+          name: String(entry?.name ?? ""),
+          hours: String(entry?.hours ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.facilities?.general_info
+        ? [
+            {
+              name: "",
+              hours: "",
+              notes: parseNoteItems(undefined, data.facilities?.general_info),
+            },
+          ]
+        : [],
+    facilityLocationEntries: Array.isArray(data.facilities?.location_entries)
+      ? data.facilities.location_entries.map((entry: Record<string, unknown>) => ({
+          name: String(entry?.name ?? ""),
+          floor: String(entry?.floor ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.facilities?.location_info
+        ? [
+            {
+              name: "",
+              floor: "",
+              notes: parseNoteItems(undefined, data.facilities?.location_info),
+            },
+          ]
+        : [],
+    amenityEntries: Array.isArray(data.amenities?.entries)
+      ? data.amenities.entries.map((entry: Record<string, unknown>) => ({
+          name: String(entry?.name ?? ""),
+          inRoom: String(entry?.in_room ?? ""),
+          availableOnRequest: String(entry?.available_on_request ?? ""),
+          price: String(entry?.price ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.amenities?.info
+        ? [
+            {
+              name: "",
+              inRoom: "",
+              availableOnRequest: "",
+              price: "",
+              notes: parseNoteItems(undefined, data.amenities?.info),
+            },
+          ]
+        : [],
+    parkingEntries: Array.isArray(data.facilities?.parking_entries)
+      ? data.facilities.parking_entries.map((entry: Record<string, unknown>) => ({
+          name: String(entry?.name ?? ""),
+          capacity: String(entry?.capacity ?? ""),
+          price: String(entry?.price ?? ""),
+          hours: String(entry?.hours ?? ""),
+          reservationRequired: String(entry?.reservation_required ?? ""),
+          location: String(entry?.location ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.facilities?.parking_info
+        ? [
+            {
+              name: "",
+              capacity: "",
+              price: "",
+              hours: "",
+              reservationRequired: "",
+              location: "",
+              notes: parseNoteItems(undefined, data.facilities?.parking_info),
+            },
+          ]
+        : [],
+    emergencyEntries: Array.isArray(data.emergency?.entries)
+      ? data.emergency.entries.map((entry: Record<string, unknown>) => ({
+          category: String(entry?.category ?? ""),
+          contact: String(entry?.contact ?? ""),
+          steps: String(entry?.steps ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : data.emergency?.note
+        ? [
+            {
+              category: "",
+              contact: "",
+              steps: "",
+              notes: parseNoteItems(undefined, data.emergency?.note),
+            },
+          ]
+        : [],
+    faqEntries: Array.isArray(data.faq_entries)
+      ? data.faq_entries.map((entry: Record<string, unknown>) => ({
+          question: String(entry?.question ?? ""),
+          answer: String(entry?.answer ?? ""),
+        }))
+      : data.faq_info || data.custom_qa
+        ? [
+            {
+              question: "",
+              answer: String(data.faq_info ?? data.custom_qa ?? ""),
+            },
+          ]
+        : [],
+    checkoutEntries: Array.isArray(data.checkout?.entries)
+      ? data.checkout.entries.map((entry: Record<string, unknown>) => ({
+          time: String(entry?.time ?? ""),
+          method: String(entry?.method ?? ""),
+          keyReturnLocation: String(entry?.key_return_location ?? ""),
+          lateCheckoutPolicy: String(entry?.late_checkout_policy ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : [],
+    roomServiceEntries: Array.isArray(data.room_service?.entries)
+      ? data.room_service.entries.map((entry: Record<string, unknown>) => ({
+          menuName: String(entry?.menu_name ?? ""),
+          price: String(entry?.price ?? ""),
+          orderMethod: String(entry?.order_method ?? ""),
+          hours: String(entry?.hours ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : [],
+    transportEntries: Array.isArray(data.transport?.entries)
+      ? data.transport.entries.map((entry: Record<string, unknown>) => ({
+          companyName: String(entry?.company_name ?? ""),
+          serviceType: String(entry?.service_type ?? ""),
+          phone: String(entry?.phone ?? ""),
+          hours: String(entry?.hours ?? ""),
+          priceNote: String(entry?.price_note ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : [],
+    nearbySpotEntries: Array.isArray(data.nearby_spots?.entries)
+      ? data.nearby_spots.entries.map((entry: Record<string, unknown>) => ({
+          name: String(entry?.name ?? ""),
+          category: String(entry?.category ?? ""),
+          distance: String(entry?.distance ?? ""),
+          hours: String(entry?.hours ?? ""),
+          location: String(entry?.location ?? ""),
+          notes: parseNoteItems(entry?.note_entries, entry?.note),
+        }))
+      : [],
     updatedAt: timestampToIso(data.updated_at),
     submittedAt: timestampToIso(data.submitted_at),
   };
@@ -391,22 +705,97 @@ export async function submitHearingSheetByToken(token: string, payload: HearingS
       hotel_id: link.hotelId,
       contact_name: payload.contactName,
       contact_email: payload.contactEmail,
-      basic_info: {
-        check_in_time: payload.checkInTime,
-        check_out_time: payload.checkOutTime,
-        wifi_password: payload.wifiPassword,
+      operations: {
+        front_desk_hours: payload.frontDeskHours,
+      },
+      wifi: {
+        networks: payload.wifiNetworks,
       },
       facilities: {
-        breakfast_info: payload.breakfastInfo,
-        parking_info: payload.parkingInfo,
+        breakfast_entries: payload.breakfastEntries.map((entry) => ({
+          style: entry.style,
+          hours: entry.hours,
+          location: entry.location,
+          price: entry.price,
+          reservation_required: entry.reservationRequired,
+          note_entries: entry.notes,
+        })),
+        bath_entries: payload.bathEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
+        entries: payload.facilityEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
+        location_entries: payload.facilityLocationEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
+        parking_entries: payload.parkingEntries.map((entry) => ({
+          name: entry.name,
+          capacity: entry.capacity,
+          price: entry.price,
+          hours: entry.hours,
+          reservation_required: entry.reservationRequired,
+          location: entry.location,
+          note_entries: entry.notes,
+        })),
       },
       amenities: {
-        info: payload.amenitiesInfo,
+        entries: payload.amenityEntries.map((entry) => ({
+          name: entry.name,
+          in_room: entry.inRoom,
+          available_on_request: entry.availableOnRequest,
+          price: entry.price,
+          note_entries: entry.notes,
+        })),
       },
       emergency: {
-        note: payload.emergencyNote,
+        entries: payload.emergencyEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
       },
-      custom_qa: payload.customQa,
+      faq_entries: payload.faqEntries,
+      checkout: {
+        entries: payload.checkoutEntries.map((entry) => ({
+          time: entry.time,
+          method: entry.method,
+          key_return_location: entry.keyReturnLocation,
+          late_checkout_policy: entry.lateCheckoutPolicy,
+          note_entries: entry.notes,
+        })),
+      },
+      room_service: {
+        entries: payload.roomServiceEntries.map((entry) => ({
+          menu_name: entry.menuName,
+          price: entry.price,
+          order_method: entry.orderMethod,
+          hours: entry.hours,
+          note_entries: entry.notes,
+        })),
+      },
+      transport: {
+        entries: payload.transportEntries.map((entry) => ({
+          company_name: entry.companyName,
+          service_type: entry.serviceType,
+          phone: entry.phone,
+          hours: entry.hours,
+          price_note: entry.priceNote,
+          note_entries: entry.notes,
+        })),
+      },
+      nearby_spots: {
+        entries: payload.nearbySpotEntries.map((entry) => ({
+          name: entry.name,
+          category: entry.category,
+          distance: entry.distance,
+          hours: entry.hours,
+          location: entry.location,
+          note_entries: entry.notes,
+        })),
+      },
       source_token: token,
       source_link_id: link.id,
       submitted_at: now,
@@ -429,6 +818,125 @@ export async function submitHearingSheetByToken(token: string, payload: HearingS
 
   return {
     hotelId: link.hotelId,
+    submitted: true,
+  };
+}
+
+export async function saveHearingSheetByHotelId(hotelId: string, payload: HearingSheetPayload) {
+  const hotel = await getHotelById(hotelId);
+
+  if (!hotel) {
+    throw new Error("対象ホテルが見つかりません。");
+  }
+
+  const { db } = getFirebaseAdminServices();
+  const now = FieldValue.serverTimestamp();
+
+  await db.collection("hearing_sheets").doc(hotelId).set(
+    {
+      hotel_id: hotelId,
+      contact_name: payload.contactName,
+      contact_email: payload.contactEmail,
+      operations: {
+        front_desk_hours: payload.frontDeskHours,
+      },
+      wifi: {
+        networks: payload.wifiNetworks,
+      },
+      facilities: {
+        breakfast_entries: payload.breakfastEntries.map((entry) => ({
+          style: entry.style,
+          hours: entry.hours,
+          location: entry.location,
+          price: entry.price,
+          reservation_required: entry.reservationRequired,
+          note_entries: entry.notes,
+        })),
+        bath_entries: payload.bathEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
+        entries: payload.facilityEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
+        location_entries: payload.facilityLocationEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
+        parking_entries: payload.parkingEntries.map((entry) => ({
+          name: entry.name,
+          capacity: entry.capacity,
+          price: entry.price,
+          hours: entry.hours,
+          reservation_required: entry.reservationRequired,
+          location: entry.location,
+          note_entries: entry.notes,
+        })),
+      },
+      amenities: {
+        entries: payload.amenityEntries.map((entry) => ({
+          name: entry.name,
+          in_room: entry.inRoom,
+          available_on_request: entry.availableOnRequest,
+          price: entry.price,
+          note_entries: entry.notes,
+        })),
+      },
+      emergency: {
+        entries: payload.emergencyEntries.map((entry) => ({
+          ...entry,
+          note_entries: entry.notes,
+        })),
+      },
+      faq_entries: payload.faqEntries,
+      checkout: {
+        entries: payload.checkoutEntries.map((entry) => ({
+          time: entry.time,
+          method: entry.method,
+          key_return_location: entry.keyReturnLocation,
+          late_checkout_policy: entry.lateCheckoutPolicy,
+          note_entries: entry.notes,
+        })),
+      },
+      room_service: {
+        entries: payload.roomServiceEntries.map((entry) => ({
+          menu_name: entry.menuName,
+          price: entry.price,
+          order_method: entry.orderMethod,
+          hours: entry.hours,
+          note_entries: entry.notes,
+        })),
+      },
+      transport: {
+        entries: payload.transportEntries.map((entry) => ({
+          company_name: entry.companyName,
+          service_type: entry.serviceType,
+          phone: entry.phone,
+          hours: entry.hours,
+          price_note: entry.priceNote,
+          note_entries: entry.notes,
+        })),
+      },
+      nearby_spots: {
+        entries: payload.nearbySpotEntries.map((entry) => ({
+          name: entry.name,
+          category: entry.category,
+          distance: entry.distance,
+          hours: entry.hours,
+          location: entry.location,
+          note_entries: entry.notes,
+        })),
+      },
+      updated_at: now,
+      submitted_at: now,
+      last_updated_by: "super_admin",
+    },
+    { merge: true },
+  );
+
+  return {
+    hotelId,
     submitted: true,
   };
 }
@@ -477,9 +985,9 @@ export async function generateRoomQrsForHotel(hotelId: string) {
   const records = await Promise.all(
     rooms.map(async (room) => {
       const guestUrl = buildGuestRoomUrl({
-        hotelId: room.hotelId,
-        roomId: room.id,
-        roomNumber: room.roomNumber,
+        hotel_id: room.hotelId,
+        room_id: room.id,
+        room_number: room.roomNumber,
       });
       const qrSvg = await QRCode.toString(guestUrl, {
         type: "svg",
@@ -582,9 +1090,9 @@ export async function generateRoomQrPdf(hotelId: string) {
   const roomPayloads = await Promise.all(
     rooms.map(async (room) => {
       const guestUrl = buildGuestRoomUrl({
-        hotelId: room.hotelId,
-        roomId: room.id,
-        roomNumber: room.roomNumber,
+        hotel_id: room.hotelId,
+        room_id: room.id,
+        room_number: room.roomNumber,
       });
       const qrDataUrl = await QRCode.toDataURL(guestUrl, {
         margin: 1,
@@ -751,6 +1259,7 @@ export async function provisionHotelAdmin(input: HotelProvisionInput) {
     batch.set(db.collection("users").doc(userRecord.uid), {
       user_id: userRecord.uid,
       hotel_id: hotelRef.id,
+      hotel_name: input.hotelName,
       role: "hotel_admin",
       email: input.hotelAdminEmail,
       created_at: FieldValue.serverTimestamp(),

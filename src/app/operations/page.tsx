@@ -28,6 +28,7 @@ export default async function OperationsPage() {
   await requireSuperAdminPageSession();
   return (
     <AdminShell
+      section="operations"
       title="運用監視"
       description="ゲスト側・ホテル側アプリの裏側にあるバックエンド、AI基盤、リアルタイムキュー制御、滞在失効、各種アラートを監視する画面です。"
     >

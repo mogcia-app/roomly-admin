@@ -32,6 +32,7 @@ export default async function ArchitecturePage() {
 
   return (
     <AdminShell
+      section="architecture"
       title="設計とデータモデル"
       description="ホテル側・ゲスト側が別リポジトリでも、このプロジェクトで守るべき固定設計をここに集約します。"
     >

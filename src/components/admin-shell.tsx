@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ReactNode } from "react";
 
 import { LogoutButton } from "@/components/logout-button";
@@ -5,12 +6,21 @@ import { LogoutButton } from "@/components/logout-button";
 type AdminShellProps = {
   title: string;
   description: string;
+  section?: "dashboard" | "hotels" | "operations" | "architecture";
   children: ReactNode;
 };
+
+const navigationItems = [
+  { href: "/", label: "ダッシュボード", section: "dashboard" },
+  { href: "/hotels", label: "ホテル導入", section: "hotels" },
+  { href: "/operations", label: "運用監視", section: "operations" },
+  { href: "/architecture", label: "設計", section: "architecture" },
+] as const;
 
 export function AdminShell({
   title,
   description,
+  section,
   children,
 }: AdminShellProps) {
   return (
@@ -25,6 +35,25 @@ export function AdminShell({
               </div>
               <LogoutButton />
             </div>
+
+            <nav className="flex flex-wrap gap-2">
+              {navigationItems.map((item) => {
+                const active = item.section === section;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`inline-flex min-h-10 items-center border px-4 text-sm transition ${
+                      active
+                        ? "border-stone-900 bg-stone-900 text-white"
+                        : "border-[var(--border)] bg-white/72 text-stone-700 hover:bg-white"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
 
             <div className="max-w-3xl space-y-3">
               <p className="eyebrow">Operational Console</p>

@@ -33,9 +33,11 @@ export async function POST(
   try {
     await requireSuperAdminRequest(request);
     const { hotelId } = await params;
+    const hearingSheetBaseUrl =
+      process.env.HOTEL_HEARING_SHEET_URL_BASE?.trim() || `${request.nextUrl.origin}/hearing-sheet`;
     const link = await issueHearingSheetLink(
       hotelId,
-      `${request.nextUrl.origin}/hearing-sheet`,
+      hearingSheetBaseUrl,
     );
 
     return NextResponse.json({ link }, { status: 201 });

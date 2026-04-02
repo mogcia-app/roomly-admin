@@ -18,12 +18,14 @@ export function HearingSheetLinkForm({ hotels }: { hotels: HotelOption[] }) {
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<HearingSheetLink | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setLink(null);
     setIsSubmitting(true);
+    setCopyStatus("idle");
 
     const formData = new FormData(event.currentTarget);
     const hotelId = String(formData.get("hotelId") ?? "");
@@ -46,6 +48,19 @@ export function HearingSheetLinkForm({ hotels }: { hotels: HotelOption[] }) {
     }
 
     setLink(payload.link);
+  }
+
+  async function handleCopy() {
+    if (!link) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(link.url);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
   }
 
   return (
@@ -86,8 +101,21 @@ export function HearingSheetLinkForm({ hotels }: { hotels: HotelOption[] }) {
       {link ? (
         <div className="form-feedback form-feedback-success">
           ヒアリングシートURLを発行しました。
-          <div className="mt-2 break-all rounded-xl border border-emerald-100 bg-white/80 px-3 py-2 text-xs text-stone-700">
-            {link.url}
+          <div className="mt-2 rounded-xl border border-emerald-100 bg-white/80 px-3 py-3 text-xs text-stone-700">
+            <div className="break-all">{link.url}</div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+              >
+                URLをコピー
+              </button>
+              {copyStatus === "copied" ? <span>コピーしました。</span> : null}
+              {copyStatus === "error" ? (
+                <span className="text-rose-600">コピーに失敗しました。</span>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

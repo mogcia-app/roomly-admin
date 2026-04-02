@@ -170,7 +170,7 @@ export const responsibilities = [
 export const collections: CollectionRecord[] = [
   {
     name: "users",
-    fields: ["user_id", "hotel_id", "role", "email", "created_at"],
+    fields: ["user_id", "hotel_id", "hotel_name", "role", "email", "created_at"],
     responsibility: "Firebase Auth uid をキーにしたプロフィール保管と表示用メタデータ。",
   },
   {
