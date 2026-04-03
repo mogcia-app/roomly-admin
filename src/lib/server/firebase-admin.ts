@@ -3,6 +3,7 @@ import "server-only";
 import { App, cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 type FirebaseAdminConfig = {
   projectId: string;
@@ -60,9 +61,21 @@ export function getFirebaseAdminServices() {
   return {
     auth: getAuth(app),
     db: getFirestore(app),
+    storage: getStorage(app),
   };
 }
 
 export function isFirebaseAdminConfigured() {
   return readFirebaseAdminConfig() !== null;
+}
+
+export function getFirebaseStorageBucketName() {
+  const bucketName =
+    process.env.FIREBASE_STORAGE_BUCKET?.trim() ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim() ?? "";
+
+  if (!bucketName) {
+    throw new Error("Firebase Storage bucket が設定されていません。");
+  }
+
+  return bucketName.replace(/^gs:\/\//, "");
 }

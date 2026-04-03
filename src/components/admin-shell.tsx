@@ -6,13 +6,14 @@ import { LogoutButton } from "@/components/logout-button";
 type AdminShellProps = {
   title: string;
   description: string;
-  section?: "dashboard" | "hotels" | "operations" | "architecture";
+  section?: "dashboard" | "hotels" | "guest-rich-menus" | "operations" | "architecture";
   children: ReactNode;
 };
 
 const navigationItems = [
   { href: "/", label: "ダッシュボード", section: "dashboard" },
   { href: "/hotels", label: "ホテル導入", section: "hotels" },
+  { href: "/guest-rich-menus", label: "Guest Menu", section: "guest-rich-menus" },
   { href: "/operations", label: "運用監視", section: "operations" },
   { href: "/architecture", label: "設計", section: "architecture" },
 ] as const;

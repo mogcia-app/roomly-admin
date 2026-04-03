@@ -116,6 +116,11 @@ export default async function HotelsPage({
           body="客室登録、QR生成、PDF出力"
         />
         <AnchorLinkCard
+          href="/guest-rich-menus"
+          title="Guest メニュー"
+          body="画像とタップ領域のホテル別管理"
+        />
+        <AnchorLinkCard
           href="#ledger"
           title="4. 台帳と滞在"
           body="ホテル一覧と有効滞在の確認"

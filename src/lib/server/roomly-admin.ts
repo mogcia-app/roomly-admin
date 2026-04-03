@@ -6,7 +6,17 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 
-import { getFirebaseAdminServices, isFirebaseAdminConfigured } from "@/lib/server/firebase-admin";
+import {
+  getFirebaseAdminServices,
+  getFirebaseStorageBucketName,
+  isFirebaseAdminConfigured,
+} from "@/lib/server/firebase-admin";
+import {
+  type GuestRichMenuArea,
+  type GuestRichMenuDoc,
+  type GuestRichMenuUpsertInput,
+  sortGuestRichMenuItems,
+} from "@/lib/guest-rich-menu";
 import { buildGuestRoomUrl, buildHearingSheetUrl } from "@/lib/server/roomly-links";
 
 type HearingSheetNoteItem = {
@@ -206,6 +216,15 @@ export type RoomImportInput = {
   roomType?: string;
 };
 
+type GuestRichMenuImageUploadInput = {
+  hotelId: string;
+  filename: string;
+  contentType: string;
+  buffer: Buffer;
+  imageWidth: number;
+  imageHeight: number;
+};
+
 function timestampToIso(value: unknown) {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -242,6 +261,34 @@ function parseNoteItems(noteEntries: unknown, legacyNote?: unknown) {
   return [];
 }
 
+function toGuestRichMenuArea(value: unknown, fallbackSortOrder: number): GuestRichMenuArea {
+  const record = (value ?? {}) as Record<string, unknown>;
+  return {
+    id: String(record.id ?? "").trim(),
+    label: String(record.label ?? "").trim(),
+    x: Number(record.x ?? 0),
+    y: Number(record.y ?? 0),
+    width: Number(record.width ?? 0),
+    height: Number(record.height ?? 0),
+    actionType:
+      record.actionType === "handoff_category" ||
+      record.actionType === "language" ||
+      record.actionType === "ai_prompt" ||
+      record.actionType === "human_handoff"
+        ? record.actionType
+        : "external_link",
+    visible: record.visible !== false,
+    sortOrder: Number.isFinite(Number(record.sortOrder)) ? Number(record.sortOrder) : fallbackSortOrder,
+    url: typeof record.url === "string" ? record.url : undefined,
+    prompt: typeof record.prompt === "string" ? record.prompt : undefined,
+    handoffCategory: typeof record.handoffCategory === "string" ? record.handoffCategory : undefined,
+  };
+}
+
+function buildGuestRichMenuImageUrl(bucketName: string, path: string, token: string) {
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+}
+
 export async function listHotels() {
   if (!isFirebaseAdminConfigured()) {
     return [];
@@ -261,6 +308,32 @@ export async function listHotels() {
       hotelAdminEmail: data.hotel_admin_email ? String(data.hotel_admin_email) : undefined,
     };
   });
+}
+
+export async function getGuestRichMenuByHotelId(hotelId: string): Promise<GuestRichMenuDoc | null> {
+  if (!isFirebaseAdminConfigured()) {
+    return null;
+  }
+
+  const { db } = getFirebaseAdminServices();
+  const snapshot = await db.collection("guest_rich_menus").doc(hotelId).get();
+
+  if (!snapshot.exists) {
+    return null;
+  }
+
+  const data = snapshot.data() ?? {};
+  const items = Array.isArray(data.items) ? data.items : [];
+
+  return {
+    enabled: Boolean(data.enabled),
+    version: Number.isFinite(Number(data.version)) ? Number(data.version) : 1,
+    imageUrl: String(data.imageUrl ?? ""),
+    imageWidth: Number(data.imageWidth ?? 0),
+    imageHeight: Number(data.imageHeight ?? 0),
+    updatedAt: timestampToIso(data.updatedAt),
+    items: sortGuestRichMenuItems(items.map((item, index) => toGuestRichMenuArea(item, index + 1))),
+  };
 }
 
 export async function getHotelById(hotelId: string) {
@@ -939,6 +1012,90 @@ export async function saveHearingSheetByHotelId(hotelId: string, payload: Hearin
     hotelId,
     submitted: true,
   };
+}
+
+export async function uploadGuestRichMenuImage(input: GuestRichMenuImageUploadInput) {
+  const hotel = await getHotelById(input.hotelId);
+
+  if (!hotel) {
+    throw new Error("対象ホテルが見つかりません。");
+  }
+
+  const { storage } = getFirebaseAdminServices();
+  const bucketName = getFirebaseStorageBucketName();
+  const bucket = storage.bucket(bucketName);
+  const extension = input.contentType === "image/png" ? "png" : "jpg";
+  const token = crypto.randomUUID();
+  const path = `guest-rich-menus/${input.hotelId}/${Date.now()}.${extension}`;
+  const file = bucket.file(path);
+
+  await file.save(input.buffer, {
+    resumable: false,
+    contentType: input.contentType,
+    metadata: {
+      cacheControl: "public,max-age=3600",
+      metadata: {
+        firebaseStorageDownloadTokens: token,
+        hotelId: input.hotelId,
+        originalFilename: input.filename,
+      },
+    },
+  });
+
+  return {
+    imageUrl: buildGuestRichMenuImageUrl(bucketName, path, token),
+    imageWidth: input.imageWidth,
+    imageHeight: input.imageHeight,
+    storagePath: path,
+  };
+}
+
+export async function saveGuestRichMenuByHotelId(hotelId: string, payload: GuestRichMenuUpsertInput) {
+  const hotel = await getHotelById(hotelId);
+
+  if (!hotel) {
+    throw new Error("対象ホテルが見つかりません。");
+  }
+
+  const { db } = getFirebaseAdminServices();
+  const ref = db.collection("guest_rich_menus").doc(hotelId);
+  const existingSnapshot = await ref.get();
+  const existingVersion = existingSnapshot.exists ? Number(existingSnapshot.data()?.version ?? 0) : 0;
+  const nextVersion = Math.max(existingVersion + 1, Number(payload.version ?? 0) + 1, 1);
+
+  await ref.set(
+    {
+      enabled: payload.enabled,
+      version: nextVersion,
+      imageUrl: payload.imageUrl,
+      imageWidth: payload.imageWidth,
+      imageHeight: payload.imageHeight,
+      updatedAt: FieldValue.serverTimestamp(),
+      items: sortGuestRichMenuItems(payload.items).map((item) => ({
+        id: item.id,
+        label: item.label,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        actionType: item.actionType,
+        visible: item.visible,
+        sortOrder: item.sortOrder,
+        url: item.url ?? null,
+        prompt: item.prompt ?? null,
+        handoffCategory: item.handoffCategory ?? null,
+      })),
+    },
+    { merge: true },
+  );
+
+  const saved = await getGuestRichMenuByHotelId(hotelId);
+
+  if (!saved) {
+    throw new Error("guest rich menu の保存結果を取得できませんでした。");
+  }
+
+  return saved;
 }
 
 export async function listHearingSheetSummaries() {

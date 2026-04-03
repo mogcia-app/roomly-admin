@@ -88,6 +88,11 @@ export default async function HomePage() {
               label="客室とQR"
               description="客室登録、QR生成、PDF出力までをまとめて進めます。"
             />
+            <QuickLinkCard
+              href="/guest-rich-menus"
+              label="Guest メニュー"
+              description="ホテル別のリッチメニュー画像、タップ領域、アクションを管理します。"
+            />
           </div>
         </SectionCard>
 
@@ -180,6 +185,11 @@ export default async function HomePage() {
               href="/operations"
               title="運用監視"
               body="リアルタイム運用、リスク、監視寄りの確認に使います。"
+            />
+            <GuideRow
+              href="/guest-rich-menus"
+              title="Guest リッチメニュー"
+              body="ホテルごとの画像差し替え、タップ領域編集、並び順管理に使います。"
             />
             <GuideRow
               href="/architecture"
