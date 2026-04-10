@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { generateRoomQrPdf, getHotelById } from "@/lib/server/roomly-admin";
+import { generateRoomQrPdf, generateSingleRoomQrPdf, getHotelById, listRooms } from "@/lib/server/roomly-admin";
 import { requireSuperAdminRequest } from "@/lib/server/super-admin-auth";
 
 export const runtime = "nodejs";
@@ -12,8 +12,29 @@ export async function GET(
   try {
     await requireSuperAdminRequest(request);
     const { hotelId } = await params;
+    const roomId = request.nextUrl.searchParams.get("roomId")?.trim();
+
+    if (roomId) {
+      const [pdfBytes, rooms] = await Promise.all([generateSingleRoomQrPdf(hotelId, roomId), listRooms(hotelId)]);
+      const room = rooms.find((entry) => entry.id === roomId);
+      const roomNumber = room?.roomNumber?.trim() || roomId;
+
+      return new NextResponse(Buffer.from(pdfBytes), {
+        status: 200,
+        headers: {
+          "content-type": "application/pdf",
+          "content-disposition": `attachment; filename="${roomNumber}.pdf"`,
+        },
+      });
+    }
+
     const [pdfBytes, hotel] = await Promise.all([generateRoomQrPdf(hotelId), getHotelById(hotelId)]);
-    const safeHotelName = (hotel?.name ?? hotelId).replace(/[^\p{L}\p{N}_-]+/gu, "_");
+    const asciiHotelName = (hotel?.name ?? "")
+      .normalize("NFKC")
+      .replace(/[^\x20-\x7E]/g, "")
+      .replace(/[^A-Za-z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    const safeHotelName = asciiHotelName || hotelId;
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,

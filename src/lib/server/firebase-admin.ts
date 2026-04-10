@@ -79,3 +79,22 @@ export function getFirebaseStorageBucketName() {
 
   return bucketName.replace(/^gs:\/\//, "");
 }
+
+export function getFirebaseStorageBucketCandidates() {
+  const configuredBucket =
+    process.env.FIREBASE_STORAGE_BUCKET?.trim() ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim() ?? "";
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID?.trim() ?? process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ?? "";
+
+  const candidates = [
+    configuredBucket.replace(/^gs:\/\//, ""),
+    configuredBucket.replace(/^gs:\/\//, "").replace(/\.firebasestorage\.app$/, ".appspot.com"),
+    projectId ? `${projectId}.appspot.com` : "",
+    projectId ? `${projectId}.firebasestorage.app` : "",
+  ].filter(Boolean);
+
+  if (candidates.length === 0) {
+    throw new Error("Firebase Storage bucket が設定されていません。");
+  }
+
+  return [...new Set(candidates)];
+}

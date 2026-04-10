@@ -8,11 +8,13 @@ import type { HearingSheetData } from "@/lib/server/roomly-admin";
 export function HearingSheetAdminEditor({
   hotelId,
   initialData,
+  initiallyOpen = false,
 }: {
   hotelId: string;
   initialData: HearingSheetData;
+  initiallyOpen?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(initiallyOpen);
 
   return (
     <div className="mt-4 border-t border-white/70 pt-4">

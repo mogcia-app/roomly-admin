@@ -1,6 +1,8 @@
 import "server-only";
 
 import crypto from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -8,7 +10,7 @@ import QRCode from "qrcode";
 
 import {
   getFirebaseAdminServices,
-  getFirebaseStorageBucketName,
+  getFirebaseStorageBucketCandidates,
   isFirebaseAdminConfigured,
 } from "@/lib/server/firebase-admin";
 import {
@@ -17,7 +19,12 @@ import {
   type GuestRichMenuUpsertInput,
   sortGuestRichMenuItems,
 } from "@/lib/guest-rich-menu";
-import { buildGuestRoomUrl, buildHearingSheetUrl } from "@/lib/server/roomly-links";
+import {
+  buildGuestRoomUrl,
+  buildHearingSheetUrl,
+  getGuestRoomUrlBase,
+  getGuestRoomUrlHostname,
+} from "@/lib/server/roomly-links";
 
 type HearingSheetNoteItem = {
   label: string;
@@ -29,6 +36,8 @@ export type Hotel = {
   name: string;
   plan: string;
   createdAt: string | null;
+  contractStartDate?: string;
+  contractEndDate?: string;
   hotelAdminEmail?: string;
 };
 
@@ -69,8 +78,25 @@ export type RoomQrRecord = {
   roomId: string;
   roomNumber: string;
   guestUrl: string;
+  guestUrlHost: string;
+  needsReplacement: boolean;
   qrSvg: string;
   generatedAt: string | null;
+};
+
+export type RoomQrReplacementAudit = {
+  hotelId: string;
+  hotelName: string;
+  targetBaseUrl: string;
+  targetHost: string;
+  totalQrs: number;
+  mismatchedCount: number;
+  mismatchedRooms: Array<{
+    roomId: string;
+    roomNumber: string;
+    guestUrl: string;
+    guestUrlHost: string;
+  }>;
 };
 
 export type HearingSheetPayload = {
@@ -199,6 +225,8 @@ export type HearingSheetData = {
 export type HotelProvisionInput = {
   hotelName: string;
   plan: string;
+  contractStartDate: string;
+  contractEndDate: string;
   hotelAdminEmail: string;
   temporaryPassword: string;
 };
@@ -225,6 +253,8 @@ type GuestRichMenuImageUploadInput = {
   imageHeight: number;
 };
 
+const LOCAL_GUEST_RICH_MENU_DIR = "guest-rich-menus";
+
 function timestampToIso(value: unknown) {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -239,6 +269,14 @@ function timestampToIso(value: unknown) {
   }
 
   return null;
+}
+
+function getUrlHostname(value: string) {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function parseNoteItems(noteEntries: unknown, legacyNote?: unknown) {
@@ -274,6 +312,7 @@ function toGuestRichMenuArea(value: unknown, fallbackSortOrder: number): GuestRi
       record.actionType === "handoff_category" ||
       record.actionType === "language" ||
       record.actionType === "ai_prompt" ||
+      record.actionType === "ai_message" ||
       record.actionType === "human_handoff"
         ? record.actionType
         : "external_link",
@@ -282,11 +321,84 @@ function toGuestRichMenuArea(value: unknown, fallbackSortOrder: number): GuestRi
     url: typeof record.url === "string" ? record.url : undefined,
     prompt: typeof record.prompt === "string" ? record.prompt : undefined,
     handoffCategory: typeof record.handoffCategory === "string" ? record.handoffCategory : undefined,
+    messageText: typeof record.messageText === "string" ? record.messageText : undefined,
+    messageImageUrl: typeof record.messageImageUrl === "string" ? record.messageImageUrl : undefined,
+    messageImageAlt: typeof record.messageImageAlt === "string" ? record.messageImageAlt : undefined,
   };
 }
 
 function buildGuestRichMenuImageUrl(bucketName: string, path: string, token: string) {
   return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+}
+
+function buildLocalGuestRichMenuImageUrl(relativePath: string) {
+  return `/${relativePath.replace(/^\/+/, "")}`;
+}
+
+function parseStoragePathFromGuestRichMenuImageUrl(imageUrl: string) {
+  if (!imageUrl) {
+    return "";
+  }
+
+  try {
+    const url = new URL(imageUrl);
+    const matched = url.pathname.match(/^\/v0\/b\/[^/]+\/o\/(.+)$/);
+    return matched?.[1] ? decodeURIComponent(matched[1]) : "";
+  } catch {
+    return "";
+  }
+}
+
+function getLocalGuestRichMenuFilePath(relativePath: string) {
+  return path.join(process.cwd(), "public", relativePath.replace(/^\/+/, ""));
+}
+
+async function saveGuestRichMenuAssetLocally(input: GuestRichMenuImageUploadInput, extension: string) {
+  const relativePath = `${LOCAL_GUEST_RICH_MENU_DIR}/${input.hotelId}/${Date.now()}.${extension}`;
+  const absolutePath = getLocalGuestRichMenuFilePath(relativePath);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, input.buffer);
+
+  return {
+    imageUrl: buildLocalGuestRichMenuImageUrl(relativePath),
+    imageContentType: input.contentType,
+    storagePath: `local:${relativePath}`,
+    imageWidth: input.imageWidth,
+    imageHeight: input.imageHeight,
+  };
+}
+
+function normalizeGuestRichMenuImageUrl(imageUrl: string) {
+  if (!imageUrl) {
+    return imageUrl;
+  }
+
+  try {
+    const url = new URL(imageUrl);
+
+    if (url.hostname !== "firebasestorage.googleapis.com") {
+      return imageUrl;
+    }
+
+    const matched = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/);
+
+    if (!matched) {
+      return imageUrl;
+    }
+
+    const [, bucketName, encodedPath] = matched;
+    const candidates = getFirebaseStorageBucketCandidates();
+    const preferredBucket =
+      candidates.find((candidate) => candidate.endsWith(".appspot.com")) ?? candidates[0] ?? bucketName;
+
+    if (bucketName === preferredBucket) {
+      return imageUrl;
+    }
+
+    return buildGuestRichMenuImageUrl(preferredBucket, decodeURIComponent(encodedPath), url.searchParams.get("token") ?? "");
+  } catch {
+    return imageUrl;
+  }
 }
 
 export async function listHotels() {
@@ -305,6 +417,8 @@ export async function listHotels() {
       name: String(data.name ?? ""),
       plan: String(data.plan ?? ""),
       createdAt: timestampToIso(data.created_at),
+      contractStartDate: data.contract_start_date ? String(data.contract_start_date) : undefined,
+      contractEndDate: data.contract_end_date ? String(data.contract_end_date) : undefined,
       hotelAdminEmail: data.hotel_admin_email ? String(data.hotel_admin_email) : undefined,
     };
   });
@@ -328,7 +442,12 @@ export async function getGuestRichMenuByHotelId(hotelId: string): Promise<GuestR
   return {
     enabled: Boolean(data.enabled),
     version: Number.isFinite(Number(data.version)) ? Number(data.version) : 1,
-    imageUrl: String(data.imageUrl ?? ""),
+    menuGuideText: data.menuGuideText ? String(data.menuGuideText) : undefined,
+    imageUrl: normalizeGuestRichMenuImageUrl(String(data.imageUrl ?? "")),
+    imageContentType: data.imageContentType ? String(data.imageContentType) : undefined,
+    storagePath: data.storagePath
+      ? String(data.storagePath)
+      : parseStoragePathFromGuestRichMenuImageUrl(String(data.imageUrl ?? "")) || undefined,
     imageWidth: Number(data.imageWidth ?? 0),
     imageHeight: Number(data.imageHeight ?? 0),
     updatedAt: timestampToIso(data.updatedAt),
@@ -355,6 +474,8 @@ export async function getHotelById(hotelId: string) {
     name: String(data.name ?? ""),
     plan: String(data.plan ?? ""),
     createdAt: timestampToIso(data.created_at),
+    contractStartDate: data.contract_start_date ? String(data.contract_start_date) : undefined,
+    contractEndDate: data.contract_end_date ? String(data.contract_end_date) : undefined,
     hotelAdminEmail: data.hotel_admin_email ? String(data.hotel_admin_email) : undefined,
   } satisfies Hotel;
 }
@@ -365,11 +486,9 @@ export async function listRooms(hotelId?: string) {
   }
 
   const { db } = getFirebaseAdminServices();
-  let query = db.collection("rooms").orderBy("room_number");
-
-  if (hotelId) {
-    query = query.where("hotel_id", "==", hotelId).orderBy("room_number");
-  }
+  const query = hotelId
+    ? db.collection("rooms").where("hotel_id", "==", hotelId).orderBy("room_number")
+    : db.collection("rooms").orderBy("room_number");
 
   const snapshot = await query.get();
 
@@ -393,11 +512,9 @@ export async function listActiveStays(hotelId?: string) {
   }
 
   const { db } = getFirebaseAdminServices();
-  let query = db.collection("stays").where("is_active", "==", true).orderBy("check_in", "desc");
-
-  if (hotelId) {
-    query = query.where("hotel_id", "==", hotelId).orderBy("check_in", "desc");
-  }
+  const query = hotelId
+    ? db.collection("stays").where("is_active", "==", true).where("hotel_id", "==", hotelId).orderBy("check_in", "desc")
+    : db.collection("stays").where("is_active", "==", true).orderBy("check_in", "desc");
 
   const [staySnapshot, rooms] = await Promise.all([query.get(), listRooms(hotelId)]);
   const roomMap = new Map(rooms.map((room) => [room.id, room]));
@@ -1022,28 +1139,43 @@ export async function uploadGuestRichMenuImage(input: GuestRichMenuImageUploadIn
   }
 
   const { storage } = getFirebaseAdminServices();
-  const bucketName = getFirebaseStorageBucketName();
-  const bucket = storage.bucket(bucketName);
-  const extension = input.contentType === "image/png" ? "png" : "jpg";
+  const extension =
+    input.contentType === "image/png" ? "png" : input.contentType === "image/webp" ? "webp" : "jpg";
   const token = crypto.randomUUID();
+  const bucketNames = getFirebaseStorageBucketCandidates();
   const path = `guest-rich-menus/${input.hotelId}/${Date.now()}.${extension}`;
-  const file = bucket.file(path);
+  let uploadedBucketName = "";
 
-  await file.save(input.buffer, {
-    resumable: false,
-    contentType: input.contentType,
-    metadata: {
-      cacheControl: "public,max-age=3600",
-      metadata: {
-        firebaseStorageDownloadTokens: token,
-        hotelId: input.hotelId,
-        originalFilename: input.filename,
-      },
-    },
-  });
+  for (const bucketName of bucketNames) {
+    try {
+      const bucket = storage.bucket(bucketName);
+      const file = bucket.file(path);
+
+      await file.save(input.buffer, {
+        resumable: false,
+        contentType: input.contentType,
+        metadata: {
+          cacheControl: "public,max-age=3600",
+          metadata: {
+            firebaseStorageDownloadTokens: token,
+            hotelId: input.hotelId,
+            originalFilename: input.filename,
+          },
+        },
+      });
+
+      uploadedBucketName = bucketName;
+      break;
+    } catch {}
+  }
+
+  if (!uploadedBucketName) {
+    return saveGuestRichMenuAssetLocally(input, extension);
+  }
 
   return {
-    imageUrl: buildGuestRichMenuImageUrl(bucketName, path, token),
+    imageUrl: buildGuestRichMenuImageUrl(uploadedBucketName, path, token),
+    imageContentType: input.contentType,
     imageWidth: input.imageWidth,
     imageHeight: input.imageHeight,
     storagePath: path,
@@ -1065,9 +1197,12 @@ export async function saveGuestRichMenuByHotelId(hotelId: string, payload: Guest
 
   await ref.set(
     {
-      enabled: payload.enabled,
+      enabled: true,
       version: nextVersion,
+      menuGuideText: payload.menuGuideText ?? null,
       imageUrl: payload.imageUrl,
+      imageContentType: payload.imageContentType ?? null,
+      storagePath: payload.storagePath ?? null,
       imageWidth: payload.imageWidth,
       imageHeight: payload.imageHeight,
       updatedAt: FieldValue.serverTimestamp(),
@@ -1084,6 +1219,9 @@ export async function saveGuestRichMenuByHotelId(hotelId: string, payload: Guest
         url: item.url ?? null,
         prompt: item.prompt ?? null,
         handoffCategory: item.handoffCategory ?? null,
+        messageText: item.messageText ?? null,
+        messageImageUrl: item.messageImageUrl ?? null,
+        messageImageAlt: item.messageImageAlt ?? null,
       })),
     },
     { merge: true },
@@ -1096,6 +1234,47 @@ export async function saveGuestRichMenuByHotelId(hotelId: string, payload: Guest
   }
 
   return saved;
+}
+
+export async function getGuestRichMenuAsset(hotelId: string) {
+  const menu = await getGuestRichMenuByHotelId(hotelId);
+
+  if (!menu?.imageUrl) {
+    throw new Error("プレビュー用アセットが見つかりません。");
+  }
+
+  const storagePath = menu.storagePath || parseStoragePathFromGuestRichMenuImageUrl(menu.imageUrl);
+
+  if (!storagePath) {
+    throw new Error("アセットの保存パスを特定できません。");
+  }
+
+  if (storagePath.startsWith("local:")) {
+    const relativePath = storagePath.slice("local:".length);
+    const buffer = await readFile(getLocalGuestRichMenuFilePath(relativePath));
+    return {
+      buffer,
+      contentType: menu.imageContentType || "application/octet-stream",
+    };
+  }
+
+  const { storage } = getFirebaseAdminServices();
+  const bucketNames = getFirebaseStorageBucketCandidates();
+  let lastError: unknown = null;
+
+  for (const bucketName of bucketNames) {
+    try {
+      const [buffer] = await storage.bucket(bucketName).file(storagePath).download();
+      return {
+        buffer,
+        contentType: menu.imageContentType || "application/octet-stream",
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("プレビュー用アセットの取得に失敗しました。");
 }
 
 export async function listHearingSheetSummaries() {
@@ -1196,6 +1375,7 @@ export async function listRoomQrs(hotelId: string) {
     return [];
   }
 
+  const targetHost = getGuestRoomUrlHostname();
   const { db } = getFirebaseAdminServices();
   const snapshot = await db
     .collection("room_qrs")
@@ -1205,17 +1385,77 @@ export async function listRoomQrs(hotelId: string) {
 
   return snapshot.docs.map<RoomQrRecord>((doc) => {
     const data = doc.data();
+    const guestUrl = String(data.guest_url ?? "");
+    const guestUrlHost = getUrlHostname(guestUrl);
 
     return {
       id: doc.id,
       hotelId: String(data.hotel_id ?? ""),
       roomId: String(data.room_id ?? ""),
       roomNumber: String(data.room_number ?? ""),
-      guestUrl: String(data.guest_url ?? ""),
+      guestUrl,
+      guestUrlHost,
+      needsReplacement: Boolean(guestUrlHost) && guestUrlHost !== targetHost,
       qrSvg: String(data.qr_svg ?? ""),
       generatedAt: timestampToIso(data.generated_at),
     };
   });
+}
+
+export async function listRoomQrReplacementAudits() {
+  if (!isFirebaseAdminConfigured()) {
+    return [];
+  }
+
+  const targetBaseUrl = getGuestRoomUrlBase();
+  const targetHost = getGuestRoomUrlHostname();
+  const [hotels, snapshot] = await Promise.all([
+    listHotels(),
+    getFirebaseAdminServices().db.collection("room_qrs").get(),
+  ]);
+
+  const hotelMap = new Map(hotels.map((hotel) => [hotel.id, hotel.name]));
+  const audits = new Map<string, RoomQrReplacementAudit>();
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const hotelId = String(data.hotel_id ?? "");
+    const roomId = String(data.room_id ?? "");
+    const roomNumber = String(data.room_number ?? "");
+    const guestUrl = String(data.guest_url ?? "");
+    const guestUrlHost = getUrlHostname(guestUrl);
+    const hotelName = hotelMap.get(hotelId) ?? hotelId;
+
+    const audit =
+      audits.get(hotelId) ??
+      {
+        hotelId,
+        hotelName,
+        targetBaseUrl,
+        targetHost,
+        totalQrs: 0,
+        mismatchedCount: 0,
+        mismatchedRooms: [],
+      };
+
+    audit.totalQrs += 1;
+
+    if (guestUrlHost && guestUrlHost !== targetHost) {
+      audit.mismatchedCount += 1;
+      audit.mismatchedRooms.push({
+        roomId,
+        roomNumber,
+        guestUrl,
+        guestUrlHost,
+      });
+    }
+
+    audits.set(hotelId, audit);
+  }
+
+  return Array.from(audits.values())
+    .filter((audit) => audit.mismatchedCount > 0)
+    .sort((left, right) => right.mismatchedCount - left.mismatchedCount || left.hotelName.localeCompare(right.hotelName));
 }
 
 export async function generateRoomQrPdf(hotelId: string) {
@@ -1281,8 +1521,13 @@ export async function generateRoomQrPdf(hotelId: string) {
     }
 
     const page = pdf.getPage(pageIndex);
-    const { room, guestUrl, qrDataUrl } = roomPayloads[index];
+    const { room, qrDataUrl } = roomPayloads[index];
     const qrImage = await pdf.embedPng(qrDataUrl);
+    const safeHotelName = toPdfSafeText(hotel.name, "Roomly Hotel");
+    const safeRoomLabel = toPdfSafeText(
+      `Room ${room.roomNumber}${room.displayName ? ` / ${room.displayName}` : ""}`,
+      `Room ${room.roomNumber}`,
+    );
 
     page.drawRectangle({
       x,
@@ -1294,7 +1539,7 @@ export async function generateRoomQrPdf(hotelId: string) {
       color: rgb(1, 1, 1),
     });
 
-    page.drawText(hotel.name, {
+    page.drawText(safeHotelName, {
       x: x + 16,
       y: y + cardHeight - 28,
       size: 13,
@@ -1302,7 +1547,7 @@ export async function generateRoomQrPdf(hotelId: string) {
       color: rgb(0.14, 0.09, 0.08),
     });
 
-    page.drawText(`客室 ${room.roomNumber}${room.displayName ? ` / ${room.displayName}` : ""}`, {
+    page.drawText(safeRoomLabel, {
       x: x + 16,
       y: y + cardHeight - 48,
       size: 16,
@@ -1311,7 +1556,7 @@ export async function generateRoomQrPdf(hotelId: string) {
     });
 
     if (room.floor) {
-      page.drawText(`階数: ${room.floor}`, {
+      page.drawText(`Floor: ${toPdfSafeText(room.floor, "-")}`, {
         x: x + 16,
         y: y + cardHeight - 66,
         size: 10,
@@ -1321,7 +1566,7 @@ export async function generateRoomQrPdf(hotelId: string) {
     }
 
     if (room.roomType) {
-      page.drawText(`客室タイプ: ${room.roomType}`, {
+      page.drawText(`Type: ${toPdfSafeText(room.roomType, "-")}`, {
         x: x + 16,
         y: y + cardHeight - 80,
         size: 10,
@@ -1331,43 +1576,124 @@ export async function generateRoomQrPdf(hotelId: string) {
     }
 
     page.drawImage(qrImage, {
-      x: x + 40,
-      y: y + 42,
-      width: 120,
-      height: 120,
-    });
-
-    page.drawText("ゲスト用URL", {
-      x: x + 180,
-      y: y + 136,
-      size: 10,
-      font: boldFont,
-      color: rgb(0.14, 0.09, 0.08),
-    });
-
-    const wrapped = wrapText(guestUrl, 28);
-    wrapped.slice(0, 6).forEach((line, lineIndex) => {
-      page.drawText(line, {
-        x: x + 180,
-        y: y + 118 - lineIndex * 12,
-        size: 8,
-        font,
-        color: rgb(0.3, 0.26, 0.24),
-      });
+      x: x + (cardWidth - 140) / 2,
+      y: y + 30,
+      width: 140,
+      height: 140,
     });
   }
 
   return pdf.save();
 }
 
-function wrapText(value: string, maxCharsPerLine: number) {
-  const lines: string[] = [];
+export async function generateSingleRoomQrPdf(hotelId: string, roomId: string) {
+  const hotel = await getHotelById(hotelId);
 
-  for (let index = 0; index < value.length; index += maxCharsPerLine) {
-    lines.push(value.slice(index, index + maxCharsPerLine));
+  if (!hotel) {
+    throw new Error("対象ホテルが見つかりません。");
   }
 
-  return lines;
+  const rooms = await listRooms(hotelId);
+  const room = rooms.find((entry) => entry.id === roomId);
+
+  if (!room) {
+    throw new Error("対象の客室が見つかりません。");
+  }
+
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const cardWidth = 340;
+  const cardHeight = 330;
+  const x = (pageWidth - cardWidth) / 2;
+  const y = (pageHeight - cardHeight) / 2;
+  const page = pdf.addPage([pageWidth, pageHeight]);
+  const guestUrl = buildGuestRoomUrl({
+    hotel_id: room.hotelId,
+    room_id: room.id,
+    room_number: room.roomNumber,
+  });
+  const qrDataUrl = await QRCode.toDataURL(guestUrl, {
+    margin: 1,
+    width: 720,
+    color: {
+      dark: "#ad2218",
+      light: "#ffffff",
+    },
+  });
+  const qrImage = await pdf.embedPng(qrDataUrl);
+  const safeHotelName = toPdfSafeText(hotel.name, "Roomly Hotel");
+  const safeRoomLabel = toPdfSafeText(
+    `Room ${room.roomNumber}${room.displayName ? ` / ${room.displayName}` : ""}`,
+    `Room ${room.roomNumber}`,
+  );
+
+  page.drawRectangle({
+    x,
+    y,
+    width: cardWidth,
+    height: cardHeight,
+    borderWidth: 1,
+    borderColor: rgb(0.87, 0.77, 0.74),
+    color: rgb(1, 1, 1),
+  });
+
+  page.drawText(safeHotelName, {
+    x: x + 24,
+    y: y + cardHeight - 34,
+    size: 15,
+    font: boldFont,
+    color: rgb(0.14, 0.09, 0.08),
+  });
+
+  page.drawText(safeRoomLabel, {
+    x: x + 24,
+    y: y + cardHeight - 58,
+    size: 20,
+    font: boldFont,
+    color: rgb(0.14, 0.09, 0.08),
+  });
+
+  if (room.floor) {
+    page.drawText(`Floor: ${toPdfSafeText(room.floor, "-")}`, {
+      x: x + 24,
+      y: y + cardHeight - 82,
+      size: 11,
+      font,
+      color: rgb(0.3, 0.26, 0.24),
+    });
+  }
+
+  if (room.roomType) {
+    page.drawText(`Type: ${toPdfSafeText(room.roomType, "-")}`, {
+      x: x + 24,
+      y: y + cardHeight - 98,
+      size: 11,
+      font,
+      color: rgb(0.3, 0.26, 0.24),
+    });
+  }
+
+  page.drawImage(qrImage, {
+    x: x + (cardWidth - 220) / 2,
+    y: y + 34,
+    width: 220,
+    height: 220,
+  });
+
+  return pdf.save();
+}
+
+function toPdfSafeText(value: string, fallback = "") {
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized || fallback;
 }
 
 function timestampToMillis(value: unknown) {
@@ -1409,6 +1735,8 @@ export async function provisionHotelAdmin(input: HotelProvisionInput) {
       hotel_id: hotelRef.id,
       name: input.hotelName,
       plan: input.plan,
+      contract_start_date: input.contractStartDate,
+      contract_end_date: input.contractEndDate,
       hotel_admin_email: input.hotelAdminEmail,
       created_at: FieldValue.serverTimestamp(),
     });
@@ -1499,6 +1827,57 @@ export async function createSequentialRoomsForHotel(hotelId: string, roomCount: 
   const rooms = Array.from({ length: roomCount }, (_, index) => ({
     roomNumber: String(101 + index),
   }));
+
+  return importRoomsForHotel(hotelId, rooms);
+}
+
+type FloorRoomCountInput = {
+  floor: number;
+  roomCount: number;
+};
+
+export async function createFloorBasedRoomsForHotel(hotelId: string, floors: FloorRoomCountInput[]) {
+  if (!Array.isArray(floors) || floors.length === 0) {
+    throw new Error("少なくとも1つの階を指定してください。");
+  }
+
+  const normalizedFloors = floors
+    .map((entry) => ({
+      floor: Number(entry.floor),
+      roomCount: Number(entry.roomCount),
+    }))
+    .sort((left, right) => left.floor - right.floor);
+
+  const seenFloors = new Set<number>();
+
+  for (const entry of normalizedFloors) {
+    if (!Number.isInteger(entry.floor) || entry.floor < 1 || entry.floor > 50) {
+      throw new Error("floor は 1F から 50F の整数で指定してください。");
+    }
+
+    if (!Number.isInteger(entry.roomCount) || entry.roomCount < 1 || entry.roomCount > 99) {
+      throw new Error("各階の roomCount は 1 から 99 の整数で指定してください。");
+    }
+
+    if (seenFloors.has(entry.floor)) {
+      throw new Error("floor が重複しています。各階は1回だけ指定してください。");
+    }
+
+    seenFloors.add(entry.floor);
+  }
+
+  const totalRoomCount = normalizedFloors.reduce((sum, entry) => sum + entry.roomCount, 0);
+
+  if (totalRoomCount > 500) {
+    throw new Error("作成できる客室数は合計 500 室までです。");
+  }
+
+  const rooms = normalizedFloors.flatMap((entry) =>
+    Array.from({ length: entry.roomCount }, (_, index) => ({
+      roomNumber: String(entry.floor * 100 + index + 1),
+      floor: `${entry.floor}F`,
+    })),
+  );
 
   return importRoomsForHotel(hotelId, rooms);
 }

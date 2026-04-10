@@ -29,6 +29,8 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get("content-type") ?? "";
     let hotelName = "";
     let plan = "";
+    let contractStartDate = "";
+    let contractEndDate = "";
     let hotelAdminEmail = "";
     let temporaryPassword = "";
 
@@ -36,28 +38,42 @@ export async function POST(request: NextRequest) {
       const body = (await request.json()) as Record<string, unknown>;
       hotelName = String(body.hotelName ?? "").trim();
       plan = String(body.plan ?? "").trim();
+      contractStartDate = String(body.contractStartDate ?? "").trim();
+      contractEndDate = String(body.contractEndDate ?? "").trim();
       hotelAdminEmail = String(body.hotelAdminEmail ?? "").trim();
       temporaryPassword = String(body.temporaryPassword ?? "").trim();
     } else {
       const formData = await request.formData();
       hotelName = readJsonString(formData.get("hotelName"));
       plan = readJsonString(formData.get("plan"));
+      contractStartDate = readJsonString(formData.get("contractStartDate"));
+      contractEndDate = readJsonString(formData.get("contractEndDate"));
       hotelAdminEmail = readJsonString(formData.get("hotelAdminEmail"));
       temporaryPassword = readJsonString(formData.get("temporaryPassword"));
     }
 
-    if (!hotelName || !plan || !hotelAdminEmail || !temporaryPassword) {
+    if (!hotelName || !plan || !contractStartDate || !contractEndDate || !hotelAdminEmail || !temporaryPassword) {
       return NextResponse.json(
         {
-          error: "ホテル名、プラン、hotel_admin メールアドレス、仮パスワードは必須です。",
+          error: "ホテル名、プラン、契約開始日、契約終了日、hotel_admin メールアドレス、仮パスワードは必須です。",
         },
         { status: 400 },
       );
     }
 
+    if (Number.isNaN(Date.parse(contractStartDate)) || Number.isNaN(Date.parse(contractEndDate))) {
+      return NextResponse.json({ error: "契約開始日と契約終了日は有効な日付を指定してください。" }, { status: 400 });
+    }
+
+    if (contractEndDate < contractStartDate) {
+      return NextResponse.json({ error: "契約終了日は契約開始日以降を指定してください。" }, { status: 400 });
+    }
+
     const result = await provisionHotelAdmin({
       hotelName,
       plan,
+      contractStartDate,
+      contractEndDate,
       hotelAdminEmail,
       temporaryPassword,
     });

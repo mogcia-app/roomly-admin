@@ -1,9 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { uploadGuestRichMenuImage } from "@/lib/server/roomly-admin";
+import { getGuestRichMenuAsset, uploadGuestRichMenuImage } from "@/lib/server/roomly-admin";
 import { requireSuperAdminRequest } from "@/lib/server/super-admin-auth";
 
 export const runtime = "nodejs";
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ hotelId: string }> },
+) {
+  try {
+    await requireSuperAdminRequest(request);
+    const { hotelId } = await params;
+    const asset = await getGuestRichMenuAsset(hotelId);
+
+    return new NextResponse(new Uint8Array(asset.buffer), {
+      status: 200,
+      headers: {
+        "content-type": asset.contentType,
+        "cache-control": "private, max-age=60",
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "画像取得に失敗しました。" },
+      { status: 500 },
+    );
+  }
+}
 
 export async function POST(
   request: NextRequest,
@@ -25,8 +49,8 @@ export async function POST(
       return NextResponse.json({ error: "imageWidth と imageHeight は必須です。" }, { status: 400 });
     }
 
-    if (!["image/png", "image/jpeg"].includes(image.type)) {
-      return NextResponse.json({ error: "PNG または JPEG をアップロードしてください。" }, { status: 400 });
+    if (!["image/png", "image/jpeg", "image/webp"].includes(image.type)) {
+      return NextResponse.json({ error: "PNG / JPEG / WebP をアップロードしてください。" }, { status: 400 });
     }
 
     const uploaded = await uploadGuestRichMenuImage({

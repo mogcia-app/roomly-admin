@@ -3,6 +3,7 @@ export const guestRichMenuActionTypes = [
   "handoff_category",
   "language",
   "ai_prompt",
+  "ai_message",
   "human_handoff",
 ] as const;
 
@@ -21,12 +22,18 @@ export type GuestRichMenuArea = {
   url?: string;
   prompt?: string;
   handoffCategory?: string;
+  messageText?: string;
+  messageImageUrl?: string;
+  messageImageAlt?: string;
 };
 
 export type GuestRichMenuDoc = {
   enabled: boolean;
   version: number;
+  menuGuideText?: string;
   imageUrl: string;
+  imageContentType?: string;
+  storagePath?: string;
   imageWidth: number;
   imageHeight: number;
   updatedAt: string | null;
@@ -102,7 +109,10 @@ export function normalizeGuestRichMenuInput(input: unknown): GuestRichMenuUpsert
   return {
     enabled: Boolean(record.enabled),
     version: Number.isFinite(Number(record.version)) ? Number(record.version) : 0,
+    menuGuideText: typeof record.menuGuideText === "string" ? record.menuGuideText.trim() : undefined,
     imageUrl: String(record.imageUrl ?? "").trim(),
+    imageContentType: typeof record.imageContentType === "string" ? record.imageContentType.trim() : undefined,
+    storagePath: typeof record.storagePath === "string" ? record.storagePath.trim() : undefined,
     imageWidth: Math.round(asNonNegativeNumber(record.imageWidth)),
     imageHeight: Math.round(asNonNegativeNumber(record.imageHeight)),
     items: items.map((item, index) => {
@@ -120,6 +130,9 @@ export function normalizeGuestRichMenuInput(input: unknown): GuestRichMenuUpsert
         url: typeof area.url === "string" ? area.url.trim() : undefined,
         prompt: typeof area.prompt === "string" ? area.prompt.trim() : undefined,
         handoffCategory: typeof area.handoffCategory === "string" ? area.handoffCategory.trim() : undefined,
+        messageText: typeof area.messageText === "string" ? area.messageText.trim() : undefined,
+        messageImageUrl: typeof area.messageImageUrl === "string" ? area.messageImageUrl.trim() : undefined,
+        messageImageAlt: typeof area.messageImageAlt === "string" ? area.messageImageAlt.trim() : undefined,
       } satisfies GuestRichMenuArea;
     }),
   };
@@ -128,9 +141,18 @@ export function normalizeGuestRichMenuInput(input: unknown): GuestRichMenuUpsert
 export function validateGuestRichMenuInput(input: GuestRichMenuUpsertInput) {
   const errors: string[] = [];
   const seenIds = new Set<string>();
+  const allowedImageContentTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
 
   if (!input.imageUrl) {
     errors.push("imageUrl は必須です。");
+  }
+
+  if (input.imageUrl && /\.pdf(?:$|[?#])/i.test(input.imageUrl)) {
+    errors.push("imageUrl には PDF ではなく画像 URL を保存してください。");
+  }
+
+  if (input.imageContentType && !allowedImageContentTypes.has(input.imageContentType)) {
+    errors.push("imageContentType は image/png・image/jpeg・image/webp のみ保存できます。");
   }
 
   if (input.imageWidth <= 0 || input.imageHeight <= 0) {
@@ -162,6 +184,10 @@ export function validateGuestRichMenuInput(input: GuestRichMenuUpsertInput) {
 
     if (item.actionType === "ai_prompt" && !item.prompt) {
       errors.push(`${label} は ai_prompt のため prompt が必須です。`);
+    }
+
+    if (item.actionType === "ai_message" && !item.messageText && !item.messageImageUrl) {
+      errors.push(`${label} は ai_message のため messageText または messageImageUrl が必須です。`);
     }
   });
 

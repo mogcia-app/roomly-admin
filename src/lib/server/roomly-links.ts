@@ -29,6 +29,7 @@ type GuestRoomLinkInput = {
 
 const ROOM_QR_TOKEN_VERSION = 1;
 const DEFAULT_ROOM_QR_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365 * 10;
+const ROOMLY_GUEST_ROOM_PUBLIC_URL_BASE = "https://www.roomly.chat/";
 
 function encodeBase64Url(input: string | Buffer) {
   return Buffer.from(input)
@@ -123,9 +124,16 @@ export function verifySignedRoomToken(token: string) {
   return parsed;
 }
 
+export function getGuestRoomUrlBase() {
+  return ROOMLY_GUEST_ROOM_PUBLIC_URL_BASE;
+}
+
+export function getGuestRoomUrlHostname() {
+  return new URL(getGuestRoomUrlBase()).hostname;
+}
+
 export function buildGuestRoomUrl(input: GuestRoomLinkInput) {
-  const baseUrl = requireUrlEnv("GUEST_ROOM_URL_BASE");
-  const url = new URL(baseUrl);
+  const url = new URL(getGuestRoomUrlBase());
   url.searchParams.set("token", createSignedRoomToken(input));
   return url.toString();
 }

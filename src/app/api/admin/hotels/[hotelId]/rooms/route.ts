@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  createFloorBasedRoomsForHotel,
   createSequentialRoomsForHotel,
   listRooms,
   updateRoomDisplayName,
@@ -35,6 +36,25 @@ export async function POST(
     await requireSuperAdminRequest(request);
     const { hotelId } = await params;
     const formData = await request.formData();
+    const floorAssignmentsRaw = String(formData.get("floorAssignments") ?? "").trim();
+
+    if (floorAssignmentsRaw) {
+      let floorAssignments: unknown;
+
+      try {
+        floorAssignments = JSON.parse(floorAssignmentsRaw);
+      } catch {
+        return NextResponse.json({ error: "floorAssignments の形式が不正です。" }, { status: 400 });
+      }
+
+      const result = await createFloorBasedRoomsForHotel(
+        hotelId,
+        Array.isArray(floorAssignments) ? floorAssignments : [],
+      );
+
+      return NextResponse.json(result, { status: 201 });
+    }
+
     const roomCountRaw = Number(formData.get("roomCount"));
 
     if (!Number.isInteger(roomCountRaw) || roomCountRaw < 1 || roomCountRaw > 500) {

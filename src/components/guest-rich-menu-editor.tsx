@@ -30,9 +30,11 @@ const recommendedHeight = 810;
 
 function createEmptyMenu(): GuestRichMenuDoc {
   return {
-    enabled: false,
+    enabled: true,
     version: 0,
+    menuGuideText: "",
     imageUrl: "",
+    imageContentType: "",
     imageWidth: recommendedWidth,
     imageHeight: recommendedHeight,
     updatedAt: null,
@@ -43,19 +45,47 @@ function createEmptyMenu(): GuestRichMenuDoc {
 function getActionTypeLabel(actionType: GuestRichMenuArea["actionType"]) {
   switch (actionType) {
     case "external_link":
-      return "外部リンク";
+      return "外部ページを開く";
     case "handoff_category":
-      return "カテゴリ引き継ぎ";
+      return "チャットの依頼メニューへ進む";
     case "language":
-      return "言語変更";
+      return "表示言語を切り替える";
     case "ai_prompt":
-      return "AI プロンプト";
+      return "チャットで依頼を始める";
+    case "ai_message":
+      return "AIから画像や案内を表示する";
     case "human_handoff":
-      return "有人対応";
+      return "スタッフ対応へつなぐ";
     default:
       return actionType;
   }
 }
+
+function getActionTypeDescription(actionType: GuestRichMenuArea["actionType"]) {
+  switch (actionType) {
+    case "external_link":
+      return "公式サイトや予約サイトなど、ホテルの外にあるページを開きたいときに使います。";
+    case "handoff_category":
+      return "guest 側に用意された依頼カテゴリへ進めたいときに使います。定型導線向けです。";
+    case "language":
+      return "日本語・英語など、guest 側の表示言語を切り替えるボタンに使います。";
+    case "ai_prompt":
+      return "チャット欄に依頼文のたたきを出して、そのまま会話を始めたいときに使います。";
+    case "ai_message":
+      return "ボタン押下後に、AI側の案内メッセージとして画像やテキストを表示したいときに使います。";
+    case "human_handoff":
+      return "フロントやスタッフへ取り次ぐ導線にしたいときに使います。";
+    default:
+      return "";
+  }
+}
+
+const AI_PROMPT_BAD_EXAMPLE = "タクシーのご予約ですね！ご利用日時・行き先・注意事項を記載してください";
+const AI_PROMPT_GOOD_EXAMPLE = `タクシーのご予約ですね！
+・ご利用日時
+・行き先
+・注意事項
+を記載してください`;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -80,6 +110,14 @@ function readImageDimensions(file: File) {
   });
 }
 
+function isPdfAsset(menu: GuestRichMenuDoc) {
+  if (menu.imageContentType === "application/pdf") {
+    return true;
+  }
+
+  return /\.pdf(?:$|[?#])/i.test(menu.imageUrl);
+}
+
 export function GuestRichMenuEditor({
   hotels,
   initialHotelId,
@@ -97,6 +135,7 @@ export function GuestRichMenuEditor({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [draftAssetUrl, setDraftAssetUrl] = useState<string | null>(null);
   const [interaction, setInteraction] = useState<InteractionState | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const latestMenuRef = useRef(menu);
@@ -109,12 +148,14 @@ export function GuestRichMenuEditor({
     if (!selectedHotelId) {
       setMenu(createEmptyMenu());
       setSelectedAreaId(null);
+      setDraftAssetUrl(null);
       return;
     }
 
     if (selectedHotelId === initialHotelId && initialMenu) {
       setMenu(initialMenu);
       setSelectedAreaId(initialMenu.items[0]?.id ?? null);
+      setDraftAssetUrl(null);
       return;
     }
 
@@ -140,10 +181,12 @@ export function GuestRichMenuEditor({
         const nextMenu = payload.menu ?? createEmptyMenu();
         setMenu(nextMenu);
         setSelectedAreaId(nextMenu.items[0]?.id ?? null);
+        setDraftAssetUrl(null);
       } catch (loadError) {
         if (!cancelled) {
           setMenu(createEmptyMenu());
           setSelectedAreaId(null);
+          setDraftAssetUrl(null);
           setError(loadError instanceof Error ? loadError.message : "guest rich menu の取得に失敗しました。");
         }
       } finally {
@@ -225,6 +268,10 @@ export function GuestRichMenuEditor({
   const sortedItems = useMemo(() => sortGuestRichMenuItems(menu.items), [menu.items]);
   const selectedArea = menu.items.find((item) => item.id === selectedAreaId) ?? null;
   const visibleItems = sortedItems.filter((item) => item.visible);
+  const pdfAsset = isPdfAsset(menu);
+  const previewAssetUrl = draftAssetUrl ?? (selectedHotelId
+    ? `/api/admin/hotels/${selectedHotelId}/guest-rich-menu/image`
+    : menu.imageUrl);
 
   function updateMenu(next: Partial<GuestRichMenuDoc>) {
     setMenu((current) => ({ ...current, ...next }));
@@ -316,6 +363,12 @@ export function GuestRichMenuEditor({
       return;
     }
 
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("guest 側へ保存できるのは PNG / JPEG / WebP のみです。PDF は画像に変換してからアップロードしてください。");
+      event.target.value = "";
+      return;
+    }
+
     setIsUploading(true);
     setError(null);
     setSuccess(null);
@@ -335,6 +388,8 @@ export function GuestRichMenuEditor({
         error?: string;
         image?: {
           imageUrl: string;
+          imageContentType?: string;
+          storagePath?: string;
           imageWidth: number;
           imageHeight: number;
         };
@@ -347,9 +402,12 @@ export function GuestRichMenuEditor({
       setMenu((current) => ({
         ...current,
         imageUrl: payload.image!.imageUrl,
+        imageContentType: payload.image!.imageContentType ?? file.type,
+        storagePath: payload.image!.storagePath,
         imageWidth: payload.image!.imageWidth,
         imageHeight: payload.image!.imageHeight,
       }));
+      setDraftAssetUrl(payload.image!.imageUrl);
       setSuccess("画像をアップロードしました。保存すると設定に反映されます。");
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "画像アップロードに失敗しました。");
@@ -366,9 +424,12 @@ export function GuestRichMenuEditor({
     }
 
     const payload: GuestRichMenuUpsertInput = {
-      enabled: menu.enabled,
+      enabled: true,
       version: menu.version,
+      menuGuideText: menu.menuGuideText,
       imageUrl: menu.imageUrl,
+      imageContentType: menu.imageContentType,
+      storagePath: menu.storagePath,
       imageWidth: menu.imageWidth,
       imageHeight: menu.imageHeight,
       items: menu.items,
@@ -402,6 +463,7 @@ export function GuestRichMenuEditor({
       const savedMenu = result.menu;
       setMenu(savedMenu);
       setSelectedAreaId((current) => current ?? savedMenu.items[0]?.id ?? null);
+      setDraftAssetUrl(null);
       setSuccess("guest rich menu を保存しました。");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "guest rich menu の保存に失敗しました。");
@@ -428,9 +490,9 @@ export function GuestRichMenuEditor({
       <div className="panel p-5 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
           <div>
-            <p className="text-lg font-semibold text-stone-950">画像キャンバス</p>
+            <p className="text-lg font-semibold text-stone-950">1. 背景画像とタップ位置</p>
             <p className="mt-1 text-sm text-stone-600">
-              ドラッグで移動、右下ハンドルでリサイズできます。推奨サイズは 1200x810 です。
+              まずホテルを選び、背景画像を登録してから、押せるボタン範囲を画像の上に置きます。ドラッグで移動、右下ハンドルでサイズ変更できます。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -453,7 +515,7 @@ export function GuestRichMenuEditor({
 
         <div className="mt-5 space-y-4">
           <label className="form-label">
-            対象ホテル
+            設定するホテル
             <select
               value={selectedHotelId}
               onChange={(event) => setSelectedHotelId(event.target.value)}
@@ -469,21 +531,39 @@ export function GuestRichMenuEditor({
 
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex cursor-pointer items-center rounded-2xl border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50">
-              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleImageUpload} />
-              {isUploading ? "アップロード中..." : "画像アップロード"}
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-stone-700">
               <input
-                type="checkbox"
-                checked={menu.enabled}
-                onChange={(event) => updateMenu({ enabled: event.target.checked })}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleImageUpload}
               />
-              guest 側で有効化
+              {isUploading ? "アップロード中..." : "背景画像をアップロード"}
             </label>
             <span className="text-xs text-stone-500">
               version {menu.version || 0}
               {menu.updatedAt ? ` / 最終更新 ${new Date(menu.updatedAt).toLocaleString()}` : ""}
             </span>
+          </div>
+
+          <div className="form-hint">
+            操作の流れ: 画像をアップロード → 「領域を追加」でボタン範囲を置く → 右側でボタン内容を設定 → 保存。
+            保存時は guest 側表示用として `enabled = true` で保存されます。
+          </div>
+
+          <label className="form-label">
+            ゲスト向けメニュー案内文
+            <textarea
+              value={menu.menuGuideText ?? ""}
+              onChange={(event) => updateMenu({ menuGuideText: event.target.value })}
+              className="form-input min-h-28"
+              placeholder={`例:
+下の便利メニューから、HP・公式SNS・アクセス・予約関連などをご利用いただけます。
+気になる項目をタップしてください。`}
+            />
+          </label>
+
+          <div className="form-hint">
+            guest 側で「このリッチメニューでは何ができるか」を案内するための文面です。トグルの上や開いた直後の案内文として使う想定です。
           </div>
 
           <div className="rounded-[28px] border border-dashed border-[var(--border)] bg-white/60 p-3">
@@ -494,7 +574,11 @@ export function GuestRichMenuEditor({
                 style={{ aspectRatio: `${menu.imageWidth} / ${menu.imageHeight}` }}
                 onClick={() => setSelectedAreaId(null)}
               >
-                <img src={menu.imageUrl} alt="guest rich menu" className="h-full w-full object-cover" />
+                {pdfAsset ? (
+                  <iframe src={previewAssetUrl} title="guest rich menu" className="h-full w-full border-0" />
+                ) : (
+                  <img src={previewAssetUrl} alt="guest rich menu" className="h-full w-full object-cover" />
+                )}
                 {sortedItems.map((item, index) => (
                   <button
                     key={item.id}
@@ -527,8 +611,7 @@ export function GuestRichMenuEditor({
               </div>
             ) : (
               <div className="flex min-h-[320px] items-center justify-center rounded-[22px] bg-stone-100 px-6 text-center text-sm leading-7 text-stone-500">
-                先に画像をアップロードしてください。画像がなくてもテンプレートや領域追加はできますが、最終保存には
-                imageUrl が必須です。
+                先に背景画像をアップロードしてください。画像がなくてもボタン領域の追加はできますが、最終保存には背景画像が必要です。
               </div>
             )}
           </div>
@@ -555,8 +638,7 @@ export function GuestRichMenuEditor({
               />
             </label>
             <div className="form-hint">
-              guest 側は <code>enabled === true</code> かつ <code>visible === true</code> の項目だけを
-              <code>sortOrder</code> 昇順で読みます。
+              背景の比率は guest 側表示の基準になります。推奨サイズは <code>1200 x 810</code> です。
             </div>
           </div>
         </div>
@@ -566,21 +648,21 @@ export function GuestRichMenuEditor({
         <div className="panel p-5 md:p-6">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
             <div>
-              <p className="text-lg font-semibold text-stone-950">項目一覧</p>
-              <p className="mt-1 text-sm text-stone-600">表示順、表示状態、選択中の項目を管理します。</p>
+              <p className="text-lg font-semibold text-stone-950">2. ボタン一覧</p>
+              <p className="mt-1 text-sm text-stone-600">今あるボタンを並び順つきで管理します。編集したいボタンをここから選びます。</p>
             </div>
             <button
               type="button"
               onClick={normalizeSortOrders}
               className="rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
             >
-              sortOrder を採番
+              表示順を並べ直す
             </button>
           </div>
 
           <div className="mt-4 space-y-3">
             {sortedItems.length === 0 ? (
-              <p className="text-sm text-stone-500">まだ項目はありません。</p>
+              <p className="text-sm text-stone-500">まだボタンはありません。「領域を追加」または「初期テンプレート」から始めてください。</p>
             ) : (
               sortedItems.map((item, index) => (
                 <button
@@ -619,12 +701,16 @@ export function GuestRichMenuEditor({
 
         <div className="panel p-5 md:p-6">
           <div className="border-b border-[var(--border)] pb-4">
-            <p className="text-lg font-semibold text-stone-950">選択中の項目</p>
-            <p className="mt-1 text-sm text-stone-600">位置、サイズ、アクション詳細を編集します。</p>
+            <p className="text-lg font-semibold text-stone-950">3. ボタン内容の設定</p>
+            <p className="mt-1 text-sm text-stone-600">選択したボタンの名前、動き、位置、サイズをここで決めます。</p>
           </div>
 
           {selectedArea ? (
             <div className="mt-4 space-y-4">
+              <div className="form-hint">
+                ボタンごとに「外部ページへ移動する」のか、「チャットの中で依頼を始める」のかを選べます。
+              </div>
+
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -650,7 +736,7 @@ export function GuestRichMenuEditor({
               </div>
 
               <label className="form-label">
-                label
+                ボタン名
                 <input
                   value={selectedArea.label}
                   onChange={(event) => updateArea(selectedArea.id, { label: event.target.value })}
@@ -660,7 +746,7 @@ export function GuestRichMenuEditor({
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="form-label">
-                  actionType
+                  押したときの動作
                   <select
                     value={selectedArea.actionType}
                     onChange={(event) => {
@@ -671,6 +757,12 @@ export function GuestRichMenuEditor({
                         prompt: actionType === "ai_prompt" ? selectedArea.prompt ?? "" : undefined,
                         handoffCategory:
                           actionType === "handoff_category" ? selectedArea.handoffCategory ?? "" : undefined,
+                        messageText:
+                          actionType === "ai_message" ? selectedArea.messageText ?? "" : undefined,
+                        messageImageUrl:
+                          actionType === "ai_message" ? selectedArea.messageImageUrl ?? "" : undefined,
+                        messageImageAlt:
+                          actionType === "ai_message" ? selectedArea.messageImageAlt ?? "" : undefined,
                       });
                     }}
                     className="form-select"
@@ -684,7 +776,7 @@ export function GuestRichMenuEditor({
                 </label>
 
                 <label className="form-label">
-                  sortOrder
+                  表示順
                   <input
                     type="number"
                     min={0}
@@ -695,18 +787,22 @@ export function GuestRichMenuEditor({
                 </label>
               </div>
 
+              <div className="form-hint">
+                {getActionTypeDescription(selectedArea.actionType)}
+              </div>
+
               <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
                 <input
                   type="checkbox"
                   checked={selectedArea.visible}
                   onChange={(event) => updateArea(selectedArea.id, { visible: event.target.checked })}
                 />
-                visible
+                guest 側に表示する
               </label>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="form-label">
-                  x
+                  X位置
                   <input
                     type="number"
                     min={0}
@@ -716,7 +812,7 @@ export function GuestRichMenuEditor({
                   />
                 </label>
                 <label className="form-label">
-                  y
+                  Y位置
                   <input
                     type="number"
                     min={0}
@@ -726,7 +822,7 @@ export function GuestRichMenuEditor({
                   />
                 </label>
                 <label className="form-label">
-                  width
+                  幅
                   <input
                     type="number"
                     min={1}
@@ -736,7 +832,7 @@ export function GuestRichMenuEditor({
                   />
                 </label>
                 <label className="form-label">
-                  height
+                  高さ
                   <input
                     type="number"
                     min={1}
@@ -749,7 +845,7 @@ export function GuestRichMenuEditor({
 
               {selectedArea.actionType === "external_link" ? (
                 <label className="form-label">
-                  url
+                  遷移先URL
                   <input
                     value={selectedArea.url ?? ""}
                     onChange={(event) => updateArea(selectedArea.id, { url: event.target.value })}
@@ -761,7 +857,7 @@ export function GuestRichMenuEditor({
 
               {selectedArea.actionType === "handoff_category" ? (
                 <label className="form-label">
-                  handoffCategory
+                  依頼メニュー名
                   <input
                     value={selectedArea.handoffCategory ?? ""}
                     onChange={(event) => updateArea(selectedArea.id, { handoffCategory: event.target.value })}
@@ -772,32 +868,144 @@ export function GuestRichMenuEditor({
               ) : null}
 
               {selectedArea.actionType === "ai_prompt" ? (
-                <label className="form-label">
-                  prompt
-                  <textarea
-                    value={selectedArea.prompt ?? ""}
-                    onChange={(event) => updateArea(selectedArea.id, { prompt: event.target.value })}
-                    className="form-input min-h-32"
-                    placeholder="ここに AI へ渡す prompt を入力"
-                  />
-                </label>
+                <div className="space-y-4">
+                  <label className="form-label">
+                    チャットに出したい案内文
+                    <textarea
+                      value={selectedArea.prompt ?? ""}
+                      onChange={(event) => updateArea(selectedArea.id, { prompt: event.target.value })}
+                      className="form-input min-h-40"
+                      placeholder={`例:
+タクシーのご予約ですね！
+・ご利用日時
+・行き先
+・注意事項
+をご記載ください`}
+                    />
+                  </label>
+
+                  <div className="form-hint space-y-3">
+                    <p className="font-semibold text-stone-900">Guestチャット文面作成ルール</p>
+                    <p>
+                      ゲスト向けチャット文面は、スマホ表示を前提に短く・区切って作成してください。吹き出し本文の実効幅は約
+                      <code>360px</code> 前後です。
+                    </p>
+                    <p>
+                      基本ルール: 1文は短くする / 要点ごとに改行する / 箇条書きは
+                      <code>・</code> でそろえる / 日時・場所・持ち物・注意事項は分けて書く
+                    </p>
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">悪い例</p>
+                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-rose-900">{AI_PROMPT_BAD_EXAMPLE}</p>
+                    </div>
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">良い例</p>
+                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-emerald-900">{AI_PROMPT_GOOD_EXAMPLE}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-950">スマホ表示プレビュー</p>
+                      <p className="mt-1 text-xs leading-5 text-stone-500">
+                        左側の AI 吹き出しとして、ゲストにどう見えるかを確認します。
+                      </p>
+                    </div>
+                    <div className="ai-prompt-preview-shell">
+                      <div className="ai-prompt-preview-bubble">
+                        <p className="whitespace-pre-line">
+                          {(selectedArea.prompt ?? "").trim() || "ここに入力した文面がプレビューされます。"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {selectedArea.actionType === "ai_message" ? (
+                <div className="space-y-4">
+                  <div className="form-hint">
+                    リッチメニュー押下後に、ゲストの発話ではなく AI 側の案内として表示する内容を設定します。画像だけ、文章だけ、画像+文章のどれでも使えます。
+                  </div>
+
+                  <label className="form-label">
+                    AIが表示する案内文
+                    <textarea
+                      value={selectedArea.messageText ?? ""}
+                      onChange={(event) => updateArea(selectedArea.id, { messageText: event.target.value })}
+                      className="form-input min-h-32"
+                      placeholder={`例:
+アクセス方法はこちらです。
+画像をご確認ください。
+
+ご不明点があればそのままチャットでお知らせください。`}
+                    />
+                  </label>
+
+                  <label className="form-label">
+                    AIが表示する画像URL
+                    <input
+                      value={selectedArea.messageImageUrl ?? ""}
+                      onChange={(event) => updateArea(selectedArea.id, { messageImageUrl: event.target.value })}
+                      className="form-input"
+                      placeholder="https://example.com/guide.png"
+                    />
+                  </label>
+
+                  <label className="form-label">
+                    画像の説明テキスト
+                    <input
+                      value={selectedArea.messageImageAlt ?? ""}
+                      onChange={(event) => updateArea(selectedArea.id, { messageImageAlt: event.target.value })}
+                      className="form-input"
+                      placeholder="例: 送迎バス案内"
+                    />
+                  </label>
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-950">AI表示プレビュー</p>
+                      <p className="mt-1 text-xs leading-5 text-stone-500">
+                        guest 側で、左側の AI メッセージとして出したい見え方の確認用です。
+                      </p>
+                    </div>
+                    <div className="ai-prompt-preview-shell">
+                      <div className="ai-prompt-preview-bubble space-y-3">
+                        {selectedArea.messageImageUrl ? (
+                          <img
+                            src={selectedArea.messageImageUrl}
+                            alt={selectedArea.messageImageAlt || "AI message preview"}
+                            className="w-full rounded-2xl border border-[var(--border)] object-cover"
+                          />
+                        ) : null}
+                        <p className="whitespace-pre-line">
+                          {(selectedArea.messageText ?? "").trim() || "ここに入力した案内文が表示されます。"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ) : null}
             </div>
           ) : (
-            <p className="mt-4 text-sm text-stone-500">左または上の一覧から項目を選択してください。</p>
+            <p className="mt-4 text-sm text-stone-500">上のボタン一覧、または画像上のボタン範囲を選択してください。</p>
           )}
         </div>
 
         <div className="panel p-5 md:p-6">
           <div className="border-b border-[var(--border)] pb-4">
-            <p className="text-lg font-semibold text-stone-950">プレビュー</p>
-            <p className="mt-1 text-sm text-stone-600">guest 側で使う visible 項目だけを sortOrder 昇順で確認します。</p>
+            <p className="text-lg font-semibold text-stone-950">4. 公開前プレビュー</p>
+            <p className="mt-1 text-sm text-stone-600">guest 側で実際に使う並びと表示対象だけを確認してから保存します。</p>
           </div>
 
           <div className="mt-4 space-y-4">
             {menu.imageUrl ? (
               <div className="relative overflow-hidden rounded-[22px] border border-[var(--border)] bg-stone-100" style={{ aspectRatio: `${menu.imageWidth} / ${menu.imageHeight}` }}>
-                <img src={menu.imageUrl} alt="preview" className="h-full w-full object-cover" />
+                {pdfAsset ? (
+                  <iframe src={previewAssetUrl} title="preview" className="h-full w-full border-0" />
+                ) : (
+                  <img src={previewAssetUrl} alt="preview" className="h-full w-full object-cover" />
+                )}
                 {visibleItems.map((item, index) => (
                   <div
                     key={`preview-${item.id}`}
@@ -819,7 +1027,7 @@ export function GuestRichMenuEditor({
 
             <div className="space-y-2">
               {visibleItems.length === 0 ? (
-                <p className="text-sm text-stone-500">表示対象の項目はまだありません。</p>
+                <p className="text-sm text-stone-500">公開対象のボタンはまだありません。</p>
               ) : (
                 visibleItems.map((item, index) => (
                   <div key={`order-${item.id}`} className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm text-stone-700">
@@ -839,7 +1047,7 @@ export function GuestRichMenuEditor({
                 disabled={isSaving || isLoading || isUploading}
                 className="form-submit"
               >
-                {isSaving ? "保存中..." : "保存"}
+                {isSaving ? "保存中..." : "保存して guest 側へ反映"}
               </button>
               {isLoading ? <span className="text-sm text-stone-500">読み込み中...</span> : null}
             </div>

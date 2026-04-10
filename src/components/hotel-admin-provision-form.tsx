@@ -71,6 +71,26 @@ export function HotelAdminProvisionForm() {
         </label>
 
         <label className="form-label">
+          契約開始日
+          <input
+            name="contractStartDate"
+            type="date"
+            required
+            className="form-input"
+          />
+        </label>
+
+        <label className="form-label">
+          契約終了日
+          <input
+            name="contractEndDate"
+            type="date"
+            required
+            className="form-input"
+          />
+        </label>
+
+        <label className="form-label">
           hotel_admin メールアドレス
           <input
             name="hotelAdminEmail"
