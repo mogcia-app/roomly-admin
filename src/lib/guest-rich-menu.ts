@@ -8,6 +8,56 @@ export const guestRichMenuActionTypes = [
 ] as const;
 
 export type GuestRichMenuActionType = (typeof guestRichMenuActionTypes)[number];
+export type GuestRichMenuTranslationLanguage = "en" | "zh-CN" | "zh-TW" | "ko";
+export type GuestRichMenuTranslations = Partial<Record<GuestRichMenuTranslationLanguage, string>>;
+export const guestRichMenuTranslationLanguages: GuestRichMenuTranslationLanguage[] = ["en", "zh-CN", "zh-TW", "ko"];
+
+export function normalizeProtectedTerms(value: unknown) {
+  const entries = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\n,]/)
+      : [];
+
+  return Array.from(
+    new Set(
+      entries
+        .map((entry) => String(entry ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+export function normalizeGuestRichMenuTranslations(value: unknown): GuestRichMenuTranslations | undefined {
+  const record = (value ?? {}) as Record<string, unknown>;
+  const translations = Object.fromEntries(
+    guestRichMenuTranslationLanguages.map((language) => [
+      language,
+      typeof record[language] === "string" ? record[language].trim() : "",
+    ]),
+  ) as GuestRichMenuTranslations;
+
+  return Object.values(translations).some((text) => text) ? translations : undefined;
+}
+
+export function mergeProtectedTerms(...groups: Array<string[] | undefined>) {
+  return Array.from(
+    new Set(
+      groups
+        .flatMap((group) => group ?? [])
+        .map((term) => String(term ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+export function getManualTranslation(
+  translations: GuestRichMenuTranslations | undefined,
+  language: GuestRichMenuTranslationLanguage,
+) {
+  const text = translations?.[language];
+  return typeof text === "string" && text.trim() ? text.trim() : "";
+}
 
 export type GuestRichMenuArea = {
   id: string;
@@ -25,12 +75,15 @@ export type GuestRichMenuArea = {
   messageText?: string;
   messageImageUrl?: string;
   messageImageAlt?: string;
+  protectedTerms?: string[];
+  translations?: GuestRichMenuTranslations;
 };
 
 export type GuestRichMenuDoc = {
   enabled: boolean;
   version: number;
   menuGuideText?: string;
+  translationProtectedTerms?: string[];
   imageUrl: string;
   imageContentType?: string;
   storagePath?: string;
@@ -110,6 +163,7 @@ export function normalizeGuestRichMenuInput(input: unknown): GuestRichMenuUpsert
     enabled: Boolean(record.enabled),
     version: Number.isFinite(Number(record.version)) ? Number(record.version) : 0,
     menuGuideText: typeof record.menuGuideText === "string" ? record.menuGuideText.trim() : undefined,
+    translationProtectedTerms: normalizeProtectedTerms(record.translationProtectedTerms),
     imageUrl: String(record.imageUrl ?? "").trim(),
     imageContentType: typeof record.imageContentType === "string" ? record.imageContentType.trim() : undefined,
     storagePath: typeof record.storagePath === "string" ? record.storagePath.trim() : undefined,
@@ -133,6 +187,8 @@ export function normalizeGuestRichMenuInput(input: unknown): GuestRichMenuUpsert
         messageText: typeof area.messageText === "string" ? area.messageText.trim() : undefined,
         messageImageUrl: typeof area.messageImageUrl === "string" ? area.messageImageUrl.trim() : undefined,
         messageImageAlt: typeof area.messageImageAlt === "string" ? area.messageImageAlt.trim() : undefined,
+        protectedTerms: normalizeProtectedTerms(area.protectedTerms),
+        translations: normalizeGuestRichMenuTranslations(area.translations),
       } satisfies GuestRichMenuArea;
     }),
   };

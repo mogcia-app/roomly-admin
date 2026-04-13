@@ -327,6 +327,18 @@ function toGuestRichMenuArea(value: unknown, fallbackSortOrder: number): GuestRi
     messageText: typeof record.messageText === "string" ? record.messageText : undefined,
     messageImageUrl: typeof record.messageImageUrl === "string" ? record.messageImageUrl : undefined,
     messageImageAlt: typeof record.messageImageAlt === "string" ? record.messageImageAlt : undefined,
+    protectedTerms: Array.isArray(record.protectedTerms)
+      ? record.protectedTerms.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+      : undefined,
+    translations:
+      record.translations && typeof record.translations === "object"
+        ? Object.fromEntries(
+            Object.entries(record.translations as Record<string, unknown>).map(([language, text]) => [
+              language,
+              typeof text === "string" ? text.trim() : "",
+            ]),
+          )
+        : undefined,
   };
 }
 
@@ -446,6 +458,9 @@ export async function getGuestRichMenuByHotelId(hotelId: string): Promise<GuestR
     enabled: Boolean(data.enabled),
     version: Number.isFinite(Number(data.version)) ? Number(data.version) : 1,
     menuGuideText: data.menuGuideText ? String(data.menuGuideText) : undefined,
+    translationProtectedTerms: Array.isArray(data.translationProtectedTerms)
+      ? data.translationProtectedTerms.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+      : [],
     imageUrl: normalizeGuestRichMenuImageUrl(String(data.imageUrl ?? "")),
     imageContentType: data.imageContentType ? String(data.imageContentType) : undefined,
     storagePath: data.storagePath
@@ -1203,6 +1218,7 @@ export async function saveGuestRichMenuByHotelId(hotelId: string, payload: Guest
       enabled: true,
       version: nextVersion,
       menuGuideText: payload.menuGuideText ?? null,
+      translationProtectedTerms: payload.translationProtectedTerms ?? [],
       imageUrl: payload.imageUrl,
       imageContentType: payload.imageContentType ?? null,
       storagePath: payload.storagePath ?? null,
@@ -1225,6 +1241,8 @@ export async function saveGuestRichMenuByHotelId(hotelId: string, payload: Guest
         messageText: item.messageText ?? null,
         messageImageUrl: item.messageImageUrl ?? null,
         messageImageAlt: item.messageImageAlt ?? null,
+        protectedTerms: item.protectedTerms ?? [],
+        translations: item.translations ?? null,
       })),
     },
     { merge: true },

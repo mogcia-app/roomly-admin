@@ -4,9 +4,15 @@ import { ChangeEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, use
 
 import {
   createGuestRichMenuTemplateItems,
+  getManualTranslation,
   guestRichMenuActionTypes,
+  guestRichMenuTranslationLanguages,
+  mergeProtectedTerms,
+  normalizeGuestRichMenuTranslations,
+  normalizeProtectedTerms,
   type GuestRichMenuArea,
   type GuestRichMenuDoc,
+  type GuestRichMenuTranslationLanguage,
   type GuestRichMenuUpsertInput,
   sortGuestRichMenuItems,
   validateGuestRichMenuInput,
@@ -33,6 +39,7 @@ function createEmptyMenu(): GuestRichMenuDoc {
     enabled: true,
     version: 0,
     menuGuideText: "",
+    translationProtectedTerms: [],
     imageUrl: "",
     imageContentType: "",
     imageWidth: recommendedWidth,
@@ -116,6 +123,54 @@ function isPdfAsset(menu: GuestRichMenuDoc) {
   }
 
   return /\.pdf(?:$|[?#])/i.test(menu.imageUrl);
+}
+
+function formatProtectedTerms(terms?: string[]) {
+  return (terms ?? []).join("\n");
+}
+
+function parseProtectedTerms(value: string) {
+  return normalizeProtectedTerms(value);
+}
+
+function getTranslationLabel(language: GuestRichMenuTranslationLanguage) {
+  switch (language) {
+    case "en":
+      return "英語";
+    case "zh-CN":
+      return "簡体字";
+    case "zh-TW":
+      return "繁体字";
+    case "ko":
+      return "韓国語";
+    default:
+      return language;
+  }
+}
+
+function getPrimaryText(area: GuestRichMenuArea) {
+  if (area.actionType === "ai_prompt") {
+    return area.prompt ?? "";
+  }
+
+  if (area.actionType === "ai_message") {
+    return area.messageText ?? "";
+  }
+
+  return "";
+}
+
+function updateManualTranslation(
+  area: GuestRichMenuArea,
+  language: GuestRichMenuTranslationLanguage,
+  value: string,
+) {
+  const nextTranslations = normalizeGuestRichMenuTranslations({
+    ...(area.translations ?? {}),
+    [language]: value,
+  });
+
+  return nextTranslations;
 }
 
 export function GuestRichMenuEditor({
@@ -425,6 +480,7 @@ export function GuestRichMenuEditor({
       enabled: true,
       version: menu.version,
       menuGuideText: menu.menuGuideText,
+      translationProtectedTerms: menu.translationProtectedTerms,
       imageUrl: menu.imageUrl,
       imageContentType: menu.imageContentType,
       storagePath: menu.storagePath,
@@ -562,6 +618,28 @@ export function GuestRichMenuEditor({
 
           <div className="form-hint">
             guest 側で「このリッチメニューでは何ができるか」を案内するための文面です。トグルの上や開いた直後の案内文として使う想定です。
+          </div>
+
+          <label className="form-label">
+            ホテル共通の翻訳除外ワード
+            <textarea
+              value={formatProtectedTerms(menu.translationProtectedTerms)}
+              onChange={(event) => updateMenu({ translationProtectedTerms: parseProtectedTerms(event.target.value) })}
+              className="form-input min-h-28"
+              placeholder={`例:
+Roomly旅館
+MIタクシー
+ゆの花の湯
+プレミアムラウンジ`}
+            />
+          </label>
+
+          <div className="form-hint">
+            このホテルで共通して翻訳したくない固有名詞を 1 行ずつ登録します。各ボタンの翻訳除外ワードとマージして使う想定です。
+          </div>
+
+          <div className="form-hint">
+            保存ルール: 前後の空白は自動で削除し、空行は保存せず、重複する語句は 1 件にまとめます。例としてホテル名、温泉名、タクシー会社名、ブランド名を入れてください。
           </div>
 
           <div className="rounded-[28px] border border-dashed border-[var(--border)] bg-white/60 p-3">
@@ -761,6 +839,10 @@ export function GuestRichMenuEditor({
                           actionType === "ai_message" ? selectedArea.messageImageUrl ?? "" : undefined,
                         messageImageAlt:
                           actionType === "ai_message" ? selectedArea.messageImageAlt ?? "" : undefined,
+                        protectedTerms:
+                          actionType === "ai_prompt" || actionType === "ai_message"
+                            ? selectedArea.protectedTerms ?? []
+                            : undefined,
                       });
                     }}
                     className="form-select"
@@ -886,6 +968,47 @@ export function GuestRichMenuEditor({
                     />
                   </label>
 
+                  <label className="form-label">
+                    翻訳除外ワード
+                    <textarea
+                      value={formatProtectedTerms(selectedArea.protectedTerms)}
+                      onChange={(event) =>
+                        updateArea(selectedArea.id, { protectedTerms: parseProtectedTerms(event.target.value) })
+                      }
+                      className="form-input min-h-28"
+                      placeholder={`例:
+MIタクシー
+Roomly旅館
+プレミアムラウンジ`}
+                    />
+                  </label>
+
+                  <div className="form-hint">
+                    この案内文を自動翻訳するときに、そのまま残したい固有名詞を 1 行ずつ登録します。
+                  </div>
+
+                  <div className="form-hint">
+                    手動翻訳を入力した言語は、その文言を自動翻訳より優先して表示します。空欄は未設定扱いで、自動翻訳にフォールバックします。
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {guestRichMenuTranslationLanguages.map((language) => (
+                      <label key={`prompt-translation-${language}`} className="form-label">
+                        {getTranslationLabel(language)} の手動翻訳
+                        <textarea
+                          value={getManualTranslation(selectedArea.translations, language)}
+                          onChange={(event) =>
+                            updateArea(selectedArea.id, {
+                              translations: updateManualTranslation(selectedArea, language, event.target.value),
+                            })
+                          }
+                          className="form-input min-h-28"
+                          placeholder="未入力なら自動翻訳"
+                        />
+                      </label>
+                    ))}
+                  </div>
+
                   <div className="form-hint space-y-3">
                     <p className="font-semibold text-stone-900">Guestチャット文面作成ルール</p>
                     <p>
@@ -919,6 +1042,50 @@ export function GuestRichMenuEditor({
                           {(selectedArea.prompt ?? "").trim() || "ここに入力した文面がプレビューされます。"}
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-950">言語別の保存前確認</p>
+                      <p className="mt-1 text-xs leading-5 text-stone-500">
+                        手動翻訳があればそれを最優先で表示し、未設定の言語は日本語原文を自動翻訳に回す想定で確認します。
+                      </p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <article className="rounded-2xl border border-[var(--border)] bg-stone-50 p-4">
+                        <p className="text-xs font-semibold text-stone-500">保護語句</p>
+                        <p className="mt-2 text-sm leading-6 text-stone-700 whitespace-pre-line">
+                          {formatProtectedTerms(
+                            mergeProtectedTerms(menu.translationProtectedTerms, selectedArea.protectedTerms),
+                          ) || "なし"}
+                        </p>
+                      </article>
+                      {(["ja", ...guestRichMenuTranslationLanguages] as const).map((language) => {
+                        const manual = language === "ja" ? "" : getManualTranslation(selectedArea.translations, language);
+                        const sourceText = getPrimaryText(selectedArea).trim();
+                        const displayText = language === "ja" ? sourceText : manual || sourceText;
+
+                        return (
+                          <article key={`prompt-preview-${language}`} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-stone-950">
+                                {language === "ja" ? "日本語" : getTranslationLabel(language)}
+                              </p>
+                              <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${language === "ja"
+                                ? "bg-stone-100 text-stone-700"
+                                : manual
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-amber-50 text-amber-700"}`}>
+                                {language === "ja" ? "原文" : manual ? "手動翻訳あり" : "自動翻訳"}
+                              </span>
+                            </div>
+                            <p className="mt-3 whitespace-pre-line text-sm leading-6 text-stone-700">
+                              {displayText || "文言未入力"}
+                            </p>
+                          </article>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -955,6 +1122,47 @@ export function GuestRichMenuEditor({
                   </label>
 
                   <label className="form-label">
+                    翻訳除外ワード
+                    <textarea
+                      value={formatProtectedTerms(selectedArea.protectedTerms)}
+                      onChange={(event) =>
+                        updateArea(selectedArea.id, { protectedTerms: parseProtectedTerms(event.target.value) })
+                      }
+                      className="form-input min-h-28"
+                      placeholder={`例:
+MIタクシー
+ゆの花の湯
+プレミアムラウンジ`}
+                    />
+                  </label>
+
+                  <div className="form-hint">
+                    `messageText` を自動翻訳するときに翻訳したくない固有名詞を 1 行ずつ登録します。
+                  </div>
+
+                  <div className="form-hint">
+                    手動翻訳を入力した言語は、その文言を自動翻訳より優先して表示します。空欄は未設定扱いで、自動翻訳にフォールバックします。
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {guestRichMenuTranslationLanguages.map((language) => (
+                      <label key={`message-translation-${language}`} className="form-label">
+                        {getTranslationLabel(language)} の手動翻訳
+                        <textarea
+                          value={getManualTranslation(selectedArea.translations, language)}
+                          onChange={(event) =>
+                            updateArea(selectedArea.id, {
+                              translations: updateManualTranslation(selectedArea, language, event.target.value),
+                            })
+                          }
+                          className="form-input min-h-28"
+                          placeholder="未入力なら自動翻訳"
+                        />
+                      </label>
+                    ))}
+                  </div>
+
+                  <label className="form-label">
                     画像の説明テキスト
                     <input
                       value={selectedArea.messageImageAlt ?? ""}
@@ -984,6 +1192,54 @@ export function GuestRichMenuEditor({
                           {(selectedArea.messageText ?? "").trim() || "ここに入力した案内文が表示されます。"}
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="form-hint">
+                    画像のみ設定して本文が空の場合、翻訳対象はありません。画像URLと画像説明だけを guest 側に表示する運用です。
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-stone-950">言語別の保存前確認</p>
+                      <p className="mt-1 text-xs leading-5 text-stone-500">
+                        手動翻訳があればそれを最優先で表示し、未設定の言語は日本語原文を自動翻訳に回す想定で確認します。
+                      </p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <article className="rounded-2xl border border-[var(--border)] bg-stone-50 p-4">
+                        <p className="text-xs font-semibold text-stone-500">保護語句</p>
+                        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-stone-700">
+                          {formatProtectedTerms(
+                            mergeProtectedTerms(menu.translationProtectedTerms, selectedArea.protectedTerms),
+                          ) || "なし"}
+                        </p>
+                      </article>
+                      {(["ja", ...guestRichMenuTranslationLanguages] as const).map((language) => {
+                        const manual = language === "ja" ? "" : getManualTranslation(selectedArea.translations, language);
+                        const sourceText = getPrimaryText(selectedArea).trim();
+                        const displayText = language === "ja" ? sourceText : manual || sourceText;
+
+                        return (
+                          <article key={`message-preview-${language}`} className="rounded-2xl border border-[var(--border)] bg-white p-4">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-stone-950">
+                                {language === "ja" ? "日本語" : getTranslationLabel(language)}
+                              </p>
+                              <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${language === "ja"
+                                ? "bg-stone-100 text-stone-700"
+                                : manual
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-amber-50 text-amber-700"}`}>
+                                {language === "ja" ? "原文" : manual ? "手動翻訳あり" : "自動翻訳"}
+                              </span>
+                            </div>
+                            <p className="mt-3 whitespace-pre-line text-sm leading-6 text-stone-700">
+                              {displayText || "本文なし（画像のみ運用）"}
+                            </p>
+                          </article>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
