@@ -269,9 +269,7 @@ export function GuestRichMenuEditor({
   const selectedArea = menu.items.find((item) => item.id === selectedAreaId) ?? null;
   const visibleItems = sortedItems.filter((item) => item.visible);
   const pdfAsset = isPdfAsset(menu);
-  const previewAssetUrl = draftAssetUrl ?? (selectedHotelId
-    ? `/api/admin/hotels/${selectedHotelId}/guest-rich-menu/image`
-    : menu.imageUrl);
+  const previewAssetUrl = draftAssetUrl ?? menu.imageUrl;
 
   function updateMenu(next: Partial<GuestRichMenuDoc>) {
     setMenu((current) => ({ ...current, ...next }));
@@ -797,8 +795,12 @@ export function GuestRichMenuEditor({
                   checked={selectedArea.visible}
                   onChange={(event) => updateArea(selectedArea.id, { visible: event.target.checked })}
                 />
-                guest 側に表示する
+                ゲスト画面のリッチメニューにこのボタンを表示する
               </label>
+
+              <div className="form-hint">
+                オフにすると設定内容は残したまま、guest 側のリッチメニュー一覧と公開前プレビューから除外されます。
+              </div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="form-label">

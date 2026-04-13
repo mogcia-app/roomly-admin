@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 
 import {
@@ -252,6 +252,9 @@ type GuestRichMenuImageUploadInput = {
   imageWidth: number;
   imageHeight: number;
 };
+
+const ROOM_QR_DARK_HEX = "#000000";
+const ROOM_QR_LIGHT_HEX = "#ffffff";
 
 const LOCAL_GUEST_RICH_MENU_DIR = "guest-rich-menus";
 
@@ -1329,8 +1332,8 @@ export async function generateRoomQrsForHotel(hotelId: string) {
         type: "svg",
         margin: 1,
         color: {
-          dark: "#ad2218",
-          light: "#ffffff",
+          dark: ROOM_QR_DARK_HEX,
+          light: ROOM_QR_LIGHT_HEX,
         },
       });
 
@@ -1472,9 +1475,6 @@ export async function generateRoomQrPdf(hotelId: string) {
   }
 
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
-
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const margin = 32;
@@ -1483,6 +1483,7 @@ export async function generateRoomQrPdf(hotelId: string) {
   const cardGap = 18;
   const cardWidth = (pageWidth - margin * 2 - cardGap) / columns;
   const cardHeight = 230;
+  const qrSize = 180;
 
   const roomPayloads = await Promise.all(
     rooms.map(async (room) => {
@@ -1495,8 +1496,8 @@ export async function generateRoomQrPdf(hotelId: string) {
         margin: 1,
         width: 360,
         color: {
-          dark: "#ad2218",
-          light: "#ffffff",
+          dark: ROOM_QR_DARK_HEX,
+          light: ROOM_QR_LIGHT_HEX,
         },
       });
 
@@ -1521,13 +1522,8 @@ export async function generateRoomQrPdf(hotelId: string) {
     }
 
     const page = pdf.getPage(pageIndex);
-    const { room, qrDataUrl } = roomPayloads[index];
+    const { qrDataUrl } = roomPayloads[index];
     const qrImage = await pdf.embedPng(qrDataUrl);
-    const safeHotelName = toPdfSafeText(hotel.name, "Roomly Hotel");
-    const safeRoomLabel = toPdfSafeText(
-      `Room ${room.roomNumber}${room.displayName ? ` / ${room.displayName}` : ""}`,
-      `Room ${room.roomNumber}`,
-    );
 
     page.drawRectangle({
       x,
@@ -1539,47 +1535,11 @@ export async function generateRoomQrPdf(hotelId: string) {
       color: rgb(1, 1, 1),
     });
 
-    page.drawText(safeHotelName, {
-      x: x + 16,
-      y: y + cardHeight - 28,
-      size: 13,
-      font: boldFont,
-      color: rgb(0.14, 0.09, 0.08),
-    });
-
-    page.drawText(safeRoomLabel, {
-      x: x + 16,
-      y: y + cardHeight - 48,
-      size: 16,
-      font: boldFont,
-      color: rgb(0.14, 0.09, 0.08),
-    });
-
-    if (room.floor) {
-      page.drawText(`Floor: ${toPdfSafeText(room.floor, "-")}`, {
-        x: x + 16,
-        y: y + cardHeight - 66,
-        size: 10,
-        font,
-        color: rgb(0.3, 0.26, 0.24),
-      });
-    }
-
-    if (room.roomType) {
-      page.drawText(`Type: ${toPdfSafeText(room.roomType, "-")}`, {
-        x: x + 16,
-        y: y + cardHeight - 80,
-        size: 10,
-        font,
-        color: rgb(0.3, 0.26, 0.24),
-      });
-    }
-
     page.drawImage(qrImage, {
-      x: x + (cardWidth - 140) / 2,
-      y: y + 30,
-      width: 140,
-      height: 140,
+      x: x + (cardWidth - qrSize) / 2,
+      y: y + (cardHeight - qrSize) / 2,
+      width: qrSize,
+      height: qrSize,
     });
   }
 
@@ -1601,14 +1561,13 @@ export async function generateSingleRoomQrPdf(hotelId: string, roomId: string) {
   }
 
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const cardWidth = 340;
   const cardHeight = 330;
   const x = (pageWidth - cardWidth) / 2;
   const y = (pageHeight - cardHeight) / 2;
+  const qrSize = 260;
   const page = pdf.addPage([pageWidth, pageHeight]);
   const guestUrl = buildGuestRoomUrl({
     hotel_id: room.hotelId,
@@ -1619,16 +1578,11 @@ export async function generateSingleRoomQrPdf(hotelId: string, roomId: string) {
     margin: 1,
     width: 720,
     color: {
-      dark: "#ad2218",
-      light: "#ffffff",
+      dark: ROOM_QR_DARK_HEX,
+      light: ROOM_QR_LIGHT_HEX,
     },
   });
   const qrImage = await pdf.embedPng(qrDataUrl);
-  const safeHotelName = toPdfSafeText(hotel.name, "Roomly Hotel");
-  const safeRoomLabel = toPdfSafeText(
-    `Room ${room.roomNumber}${room.displayName ? ` / ${room.displayName}` : ""}`,
-    `Room ${room.roomNumber}`,
-  );
 
   page.drawRectangle({
     x,
@@ -1640,60 +1594,14 @@ export async function generateSingleRoomQrPdf(hotelId: string, roomId: string) {
     color: rgb(1, 1, 1),
   });
 
-  page.drawText(safeHotelName, {
-    x: x + 24,
-    y: y + cardHeight - 34,
-    size: 15,
-    font: boldFont,
-    color: rgb(0.14, 0.09, 0.08),
-  });
-
-  page.drawText(safeRoomLabel, {
-    x: x + 24,
-    y: y + cardHeight - 58,
-    size: 20,
-    font: boldFont,
-    color: rgb(0.14, 0.09, 0.08),
-  });
-
-  if (room.floor) {
-    page.drawText(`Floor: ${toPdfSafeText(room.floor, "-")}`, {
-      x: x + 24,
-      y: y + cardHeight - 82,
-      size: 11,
-      font,
-      color: rgb(0.3, 0.26, 0.24),
-    });
-  }
-
-  if (room.roomType) {
-    page.drawText(`Type: ${toPdfSafeText(room.roomType, "-")}`, {
-      x: x + 24,
-      y: y + cardHeight - 98,
-      size: 11,
-      font,
-      color: rgb(0.3, 0.26, 0.24),
-    });
-  }
-
   page.drawImage(qrImage, {
-    x: x + (cardWidth - 220) / 2,
-    y: y + 34,
-    width: 220,
-    height: 220,
+    x: x + (cardWidth - qrSize) / 2,
+    y: y + (cardHeight - qrSize) / 2,
+    width: qrSize,
+    height: qrSize,
   });
 
   return pdf.save();
-}
-
-function toPdfSafeText(value: string, fallback = "") {
-  const normalized = value
-    .normalize("NFKC")
-    .replace(/[^\x20-\x7E]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return normalized || fallback;
 }
 
 function timestampToMillis(value: unknown) {
