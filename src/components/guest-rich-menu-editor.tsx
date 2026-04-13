@@ -324,7 +324,13 @@ export function GuestRichMenuEditor({
   const selectedArea = menu.items.find((item) => item.id === selectedAreaId) ?? null;
   const visibleItems = sortedItems.filter((item) => item.visible);
   const pdfAsset = isPdfAsset(menu);
-  const previewAssetUrl = draftAssetUrl ?? menu.imageUrl;
+  const previewAssetUrl = draftAssetUrl ?? (
+    selectedHotelId && menu.storagePath
+      ? `/api/admin/hotels/${selectedHotelId}/guest-rich-menu/image?v=${encodeURIComponent(
+          `${menu.version || 0}-${menu.updatedAt ?? "draft"}`,
+        )}`
+      : menu.imageUrl
+  );
 
   function updateMenu(next: Partial<GuestRichMenuDoc>) {
     setMenu((current) => ({ ...current, ...next }));

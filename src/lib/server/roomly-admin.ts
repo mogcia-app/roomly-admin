@@ -383,39 +383,6 @@ async function saveGuestRichMenuAssetLocally(input: GuestRichMenuImageUploadInpu
   };
 }
 
-function normalizeGuestRichMenuImageUrl(imageUrl: string) {
-  if (!imageUrl) {
-    return imageUrl;
-  }
-
-  try {
-    const url = new URL(imageUrl);
-
-    if (url.hostname !== "firebasestorage.googleapis.com") {
-      return imageUrl;
-    }
-
-    const matched = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/);
-
-    if (!matched) {
-      return imageUrl;
-    }
-
-    const [, bucketName, encodedPath] = matched;
-    const candidates = getFirebaseStorageBucketCandidates();
-    const preferredBucket =
-      candidates.find((candidate) => candidate.endsWith(".appspot.com")) ?? candidates[0] ?? bucketName;
-
-    if (bucketName === preferredBucket) {
-      return imageUrl;
-    }
-
-    return buildGuestRichMenuImageUrl(preferredBucket, decodeURIComponent(encodedPath), url.searchParams.get("token") ?? "");
-  } catch {
-    return imageUrl;
-  }
-}
-
 export async function listHotels() {
   if (!isFirebaseAdminConfigured()) {
     return [];
@@ -461,7 +428,7 @@ export async function getGuestRichMenuByHotelId(hotelId: string): Promise<GuestR
     translationProtectedTerms: Array.isArray(data.translationProtectedTerms)
       ? data.translationProtectedTerms.map((entry) => String(entry ?? "").trim()).filter(Boolean)
       : [],
-    imageUrl: normalizeGuestRichMenuImageUrl(String(data.imageUrl ?? "")),
+    imageUrl: String(data.imageUrl ?? ""),
     imageContentType: data.imageContentType ? String(data.imageContentType) : undefined,
     storagePath: data.storagePath
       ? String(data.storagePath)
