@@ -24,17 +24,19 @@ export default async function GuestRichMenusPage({
       title="Guest リッチメニュー"
       description="ホテルごとに、ゲスト画面へ出すリッチメニューの背景画像・ボタン位置・ボタンを押した後の動作を設定するページです。保存した内容は guest 側表示に使われます。"
     >
-      {!configured ? (
-        <section className="panel border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-800">
-          Firebase Admin が未設定です。Firestore と Storage を有効にすると guest rich menu を保存できます。
-        </section>
-      ) : null}
+      <div className="guest-rich-menus-square px-4 md:px-5">
+        {!configured ? (
+          <section className="panel border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-800">
+            Firebase Admin が未設定です。Firestore と Storage を有効にすると guest rich menu を保存できます。
+          </section>
+        ) : null}
 
-      <GuestRichMenuEditor
-        hotels={hotels.map((hotel) => ({ id: hotel.id, name: hotel.name }))}
-        initialHotelId={initialHotelId}
-        initialMenu={initialMenu}
-      />
+        <GuestRichMenuEditor
+          hotels={hotels.map((hotel) => ({ id: hotel.id, name: hotel.name }))}
+          initialHotelId={initialHotelId}
+          initialMenu={initialMenu}
+        />
+      </div>
     </AdminShell>
   );
 }

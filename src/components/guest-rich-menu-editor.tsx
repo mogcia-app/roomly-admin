@@ -18,6 +18,8 @@ import {
   validateGuestRichMenuInput,
 } from "@/lib/guest-rich-menu";
 
+const editorActionTypes = guestRichMenuActionTypes.filter((actionType) => actionType !== "handoff_category");
+
 type HotelOption = {
   id: string;
   name: string;
@@ -52,17 +54,17 @@ function createEmptyMenu(): GuestRichMenuDoc {
 function getActionTypeLabel(actionType: GuestRichMenuArea["actionType"]) {
   switch (actionType) {
     case "external_link":
-      return "外部ページを開く";
+      return "URL";
     case "handoff_category":
-      return "チャットの依頼メニューへ進む";
+      return "依頼メニューを開く";
     case "language":
       return "表示言語を切り替える";
     case "ai_prompt":
-      return "チャットで依頼を始める";
+      return "チャット入力";
     case "ai_message":
-      return "AIから画像や案内を表示する";
+      return "画像を表示";
     case "human_handoff":
-      return "スタッフ対応へつなぐ";
+      return "スタッフ対応につなぐ";
     default:
       return actionType;
   }
@@ -71,17 +73,17 @@ function getActionTypeLabel(actionType: GuestRichMenuArea["actionType"]) {
 function getActionTypeDescription(actionType: GuestRichMenuArea["actionType"]) {
   switch (actionType) {
     case "external_link":
-      return "公式サイトや予約サイトなど、ホテルの外にあるページを開きたいときに使います。";
+      return "";
     case "handoff_category":
-      return "guest 側に用意された依頼カテゴリへ進めたいときに使います。定型導線向けです。";
+      return "";
     case "language":
-      return "日本語・英語など、guest 側の表示言語を切り替えるボタンに使います。";
+      return "";
     case "ai_prompt":
-      return "チャット欄に依頼文のたたきを出して、そのまま会話を始めたいときに使います。";
+      return "";
     case "ai_message":
-      return "ボタン押下後に、AI側の案内メッセージとして画像やテキストを表示したいときに使います。";
+      return "";
     case "human_handoff":
-      return "フロントやスタッフへ取り次ぐ導線にしたいときに使います。";
+      return "";
     default:
       return "";
   }
@@ -123,6 +125,28 @@ function isPdfAsset(menu: GuestRichMenuDoc) {
   }
 
   return /\.pdf(?:$|[?#])/i.test(menu.imageUrl);
+}
+
+function formatUpdatedAt(value: string | number | null | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
 }
 
 function formatProtectedTerms(terms?: string[]) {
@@ -546,14 +570,11 @@ export function GuestRichMenuEditor({
   }
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-      <div className="panel p-5 md:p-6">
+    <section className="guest-rich-menus-square grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="panel !rounded-none p-5 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
           <div>
             <p className="text-lg font-semibold text-stone-950">1. 背景画像とタップ位置</p>
-            <p className="mt-1 text-sm text-stone-600">
-              まずホテルを選び、背景画像を登録してから、押せるボタン範囲を画像の上に置きます。ドラッグで移動、右下ハンドルでサイズ変更できます。
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -562,13 +583,6 @@ export function GuestRichMenuEditor({
               className="rounded-2xl border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
             >
               領域を追加
-            </button>
-            <button
-              type="button"
-              onClick={applyTemplate}
-              className="rounded-2xl border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
-            >
-              初期テンプレート
             </button>
           </div>
         </div>
@@ -599,15 +613,7 @@ export function GuestRichMenuEditor({
               />
               {isUploading ? "アップロード中..." : "背景画像をアップロード"}
             </label>
-            <span className="text-xs text-stone-500">
-              version {menu.version || 0}
-              {menu.updatedAt ? ` / 最終更新 ${new Date(menu.updatedAt).toLocaleString()}` : ""}
-            </span>
-          </div>
-
-          <div className="form-hint">
-            操作の流れ: 画像をアップロード → 「領域を追加」でボタン範囲を置く → 右側でボタン内容を設定 → 保存。
-            保存時は guest 側表示用として `enabled = true` で保存されます。
+            <span className="text-xs text-stone-500">pngで追加してください</span>
           </div>
 
           <label className="form-label">
@@ -621,10 +627,6 @@ export function GuestRichMenuEditor({
 気になる項目をタップしてください。`}
             />
           </label>
-
-          <div className="form-hint">
-            guest 側で「このリッチメニューでは何ができるか」を案内するための文面です。トグルの上や開いた直後の案内文として使う想定です。
-          </div>
 
           <label className="form-label">
             ホテル共通の翻訳除外ワード
@@ -642,10 +644,6 @@ MIタクシー
 
           <div className="form-hint">
             このホテルで共通して翻訳したくない固有名詞を 1 行ずつ登録します。各ボタンの翻訳除外ワードとマージして使う想定です。
-          </div>
-
-          <div className="form-hint">
-            保存ルール: 前後の空白は自動で削除し、空行は保存せず、重複する語句は 1 件にまとめます。例としてホテル名、温泉名、タクシー会社名、ブランド名を入れてください。
           </div>
 
           <div className="rounded-[28px] border border-dashed border-[var(--border)] bg-white/60 p-3">
@@ -698,48 +696,15 @@ MIタクシー
             )}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="form-label">
-              imageWidth
-              <input
-                type="number"
-                min={1}
-                value={menu.imageWidth}
-                onChange={(event) => updateMenu({ imageWidth: Number(event.target.value) || 0 })}
-                className="form-input"
-              />
-            </label>
-            <label className="form-label">
-              imageHeight
-              <input
-                type="number"
-                min={1}
-                value={menu.imageHeight}
-                onChange={(event) => updateMenu({ imageHeight: Number(event.target.value) || 0 })}
-                className="form-input"
-              />
-            </label>
-            <div className="form-hint">
-              背景の比率は guest 側表示の基準になります。推奨サイズは <code>1200 x 810</code> です。
-            </div>
-          </div>
         </div>
       </div>
 
       <div className="space-y-6">
-        <div className="panel p-5 md:p-6">
+        <div className="panel !rounded-none p-5 md:p-6">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
             <div>
               <p className="text-lg font-semibold text-stone-950">2. ボタン一覧</p>
-              <p className="mt-1 text-sm text-stone-600">今あるボタンを並び順つきで管理します。編集したいボタンをここから選びます。</p>
             </div>
-            <button
-              type="button"
-              onClick={normalizeSortOrders}
-              className="rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
-            >
-              表示順を並べ直す
-            </button>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -781,42 +746,13 @@ MIタクシー
           </div>
         </div>
 
-        <div className="panel p-5 md:p-6">
+        <div className="panel !rounded-none p-5 md:p-6">
           <div className="border-b border-[var(--border)] pb-4">
             <p className="text-lg font-semibold text-stone-950">3. ボタン内容の設定</p>
-            <p className="mt-1 text-sm text-stone-600">選択したボタンの名前、動き、位置、サイズをここで決めます。</p>
           </div>
 
           {selectedArea ? (
             <div className="mt-4 space-y-4">
-              <div className="form-hint">
-                ボタンごとに「外部ページへ移動する」のか、「チャットの中で依頼を始める」のかを選べます。
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => moveItem(selectedArea.id, "up")}
-                  className="rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
-                >
-                  上へ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveItem(selectedArea.id, "down")}
-                  className="rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
-                >
-                  下へ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteArea(selectedArea.id)}
-                  className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
-                >
-                  削除
-                </button>
-              </div>
-
               <label className="form-label">
                 ボタン名
                 <input
@@ -853,7 +789,7 @@ MIタクシー
                     }}
                     className="form-select"
                   >
-                    {guestRichMenuActionTypes.map((actionType) => (
+                    {editorActionTypes.map((actionType) => (
                       <option key={actionType} value={actionType}>
                         {getActionTypeLabel(actionType)}
                       </option>
@@ -873,66 +809,6 @@ MIタクシー
                 </label>
               </div>
 
-              <div className="form-hint">
-                {getActionTypeDescription(selectedArea.actionType)}
-              </div>
-
-              <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={selectedArea.visible}
-                  onChange={(event) => updateArea(selectedArea.id, { visible: event.target.checked })}
-                />
-                ゲスト画面のリッチメニューにこのボタンを表示する
-              </label>
-
-              <div className="form-hint">
-                オフにすると設定内容は残したまま、guest 側のリッチメニュー一覧と公開前プレビューから除外されます。
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="form-label">
-                  X位置
-                  <input
-                    type="number"
-                    min={0}
-                    value={selectedArea.x}
-                    onChange={(event) => updateArea(selectedArea.id, { x: Number(event.target.value) || 0 })}
-                    className="form-input"
-                  />
-                </label>
-                <label className="form-label">
-                  Y位置
-                  <input
-                    type="number"
-                    min={0}
-                    value={selectedArea.y}
-                    onChange={(event) => updateArea(selectedArea.id, { y: Number(event.target.value) || 0 })}
-                    className="form-input"
-                  />
-                </label>
-                <label className="form-label">
-                  幅
-                  <input
-                    type="number"
-                    min={1}
-                    value={selectedArea.width}
-                    onChange={(event) => updateArea(selectedArea.id, { width: Number(event.target.value) || 0 })}
-                    className="form-input"
-                  />
-                </label>
-                <label className="form-label">
-                  高さ
-                  <input
-                    type="number"
-                    min={1}
-                    value={selectedArea.height}
-                    onChange={(event) => updateArea(selectedArea.id, { height: Number(event.target.value) || 0 })}
-                    className="form-input"
-                  />
-                </label>
-              </div>
-
               {selectedArea.actionType === "external_link" ? (
                 <label className="form-label">
                   遷移先URL
@@ -941,18 +817,6 @@ MIタクシー
                     onChange={(event) => updateArea(selectedArea.id, { url: event.target.value })}
                     className="form-input"
                     placeholder="https://example.com"
-                  />
-                </label>
-              ) : null}
-
-              {selectedArea.actionType === "handoff_category" ? (
-                <label className="form-label">
-                  依頼メニュー名
-                  <input
-                    value={selectedArea.handoffCategory ?? ""}
-                    onChange={(event) => updateArea(selectedArea.id, { handoffCategory: event.target.value })}
-                    className="form-input"
-                    placeholder="taxi"
                   />
                 </label>
               ) : null}
@@ -1250,16 +1114,25 @@ MIタクシー
                   </div>
                 </div>
               ) : null}
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => deleteArea(selectedArea.id)}
+                  className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                >
+                  このボタンを削除
+                </button>
+              </div>
             </div>
           ) : (
             <p className="mt-4 text-sm text-stone-500">上のボタン一覧、または画像上のボタン範囲を選択してください。</p>
           )}
         </div>
 
-        <div className="panel p-5 md:p-6">
+        <div className="panel !rounded-none p-5 md:p-6">
           <div className="border-b border-[var(--border)] pb-4">
             <p className="text-lg font-semibold text-stone-950">4. 公開前プレビュー</p>
-            <p className="mt-1 text-sm text-stone-600">guest 側で実際に使う並びと表示対象だけを確認してから保存します。</p>
           </div>
 
           <div className="mt-4 space-y-4">

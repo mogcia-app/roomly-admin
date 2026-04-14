@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     if (!hotelName || !plan || !contractStartDate || !contractEndDate || !hotelAdminEmail || !temporaryPassword) {
       return NextResponse.json(
         {
-          error: "ホテル名、プラン、契約開始日、契約終了日、hotel_admin メールアドレス、仮パスワードは必須です。",
+          error: "ホテル名、プラン、契約開始日、契約終了日、ホテル管理者メールアドレス、仮パスワードは必須です。",
         },
         { status: 400 },
       );
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ provisioned: result }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "hotel_admin の作成に失敗しました。" },
+      { error: error instanceof Error ? error.message : "ホテルの作成に失敗しました。" },
       { status: 500 },
     );
   }

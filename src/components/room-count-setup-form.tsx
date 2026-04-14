@@ -16,7 +16,17 @@ type FloorRow = {
 
 const FLOOR_OPTIONS = Array.from({ length: 50 }, (_, index) => index + 1);
 
-export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
+export function RoomCountSetupForm({
+  hotels,
+  selectedHotelId,
+  selectedHotelName,
+  square = false,
+}: {
+  hotels: HotelOption[];
+  selectedHotelId?: string;
+  selectedHotelName?: string;
+  square?: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,7 +60,7 @@ export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
 
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const hotelId = String(formData.get("hotelId") ?? "");
+    const hotelId = selectedHotelId ?? String(formData.get("hotelId") ?? "");
 
     if (!hotelId) {
       setError("hotelId は必須です。");
@@ -123,24 +133,31 @@ export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
   return (
     <div className="space-y-4">
       <form className="form-grid" onSubmit={handleSubmit}>
-        <label className="form-label">
-          対象ホテル
-          <select
-            name="hotelId"
-            required
-            defaultValue=""
-            className="form-select"
-          >
-            <option value="" disabled>
-              ホテルを選択
-            </option>
-            {hotels.map((hotel) => (
-              <option key={hotel.id} value={hotel.id}>
-                {hotel.name}
+        {selectedHotelId ? (
+          <div className={`${square ? "!rounded-none" : "rounded-2xl"} border border-[rgba(180,59,34,0.22)] bg-[rgba(246,216,203,0.52)] px-4 py-3 text-sm text-[var(--foreground)]`}>
+            対象ホテル: <strong>{selectedHotelName ?? selectedHotelId}</strong>
+            <input type="hidden" name="hotelId" value={selectedHotelId} />
+          </div>
+        ) : (
+          <label className="form-label">
+            対象ホテル
+            <select
+              name="hotelId"
+              required
+              defaultValue=""
+              className={`form-select ${square ? "!rounded-none" : ""}`}
+            >
+              <option value="" disabled>
+                ホテルを選択
               </option>
-            ))}
-          </select>
-        </label>
+              {hotels.map((hotel) => (
+                <option key={hotel.id} value={hotel.id}>
+                  {hotel.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -148,7 +165,7 @@ export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
             <button
               type="button"
               onClick={addRow}
-              className="form-secondary-button"
+              className={`form-secondary-button ${square ? "!rounded-none" : ""}`}
             >
               階を追加
             </button>
@@ -162,7 +179,7 @@ export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
                   <select
                     value={row.floor}
                     onChange={(event) => updateRow(row.id, "floor", event.target.value)}
-                    className="form-select"
+                    className={`form-select ${square ? "!rounded-none" : ""}`}
                     required
                   >
                     <option value="" disabled>
@@ -185,7 +202,7 @@ export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
                     min={1}
                     max={99}
                     required
-                    className="form-input"
+                    className={`form-input ${square ? "!rounded-none" : ""}`}
                     placeholder="10"
                   />
                 </label>
@@ -194,7 +211,7 @@ export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
                   type="button"
                   onClick={() => removeRow(row.id)}
                   disabled={rows.length === 1}
-                  className="form-danger-button"
+                  className={`form-danger-button ${square ? "!rounded-none" : ""}`}
                   aria-label={`${index + 1}行目を削除`}
                 >
                   削除
@@ -213,18 +230,18 @@ export function RoomCountSetupForm({ hotels }: { hotels: HotelOption[] }) {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="form-submit"
+          className={`form-submit ${square ? "!rounded-none" : ""}`}
         >
           {isSubmitting ? "登録中..." : "階数ごとに客室を登録"}
         </button>
       </form>
 
       {error ? (
-        <p className="form-feedback form-feedback-error">{error}</p>
+        <p className={`form-feedback form-feedback-error ${square ? "!rounded-none" : ""}`}>{error}</p>
       ) : null}
 
       {message ? (
-        <p className="form-feedback form-feedback-success">{message}</p>
+        <p className={`form-feedback form-feedback-success ${square ? "!rounded-none" : ""}`}>{message}</p>
       ) : null}
     </div>
   );

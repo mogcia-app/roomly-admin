@@ -184,23 +184,24 @@ textarea {
   font-size: 0.95rem;
   font-weight: 700;
   color: #fff;
+  box-shadow: none !important;
   transition:
     transform 120ms ease,
     opacity 160ms ease,
     box-shadow 160ms ease;
-  box-shadow: 0 14px 30px rgba(168, 44, 31, 0.18);
 }
 
 .form-submit:hover {
   opacity: 0.96;
   transform: translateY(-1px);
+  box-shadow: none !important;
 }
 
 .form-submit:disabled {
   cursor: not-allowed;
   opacity: 0.6;
   transform: none;
-  box-shadow: none;
+  box-shadow: none !important;
 }
 
 .form-secondary-button,
@@ -263,6 +264,56 @@ textarea {
 .form-feedback-error {
   background: #fff1f2;
   color: #be123c;
+}
+
+.hotels-square .panel,
+.hotels-square .form-input,
+.hotels-square .form-select,
+.hotels-square .form-submit,
+.hotels-square .form-secondary-button,
+.hotels-square .form-danger-button,
+.hotels-square .form-hint,
+.hotels-square .form-feedback {
+  border-radius: 0 !important;
+}
+
+.hotels-square [class*="rounded-"] {
+  border-radius: 0 !important;
+}
+
+.contracts-square .panel,
+.contracts-square .form-input,
+.contracts-square .form-select,
+.contracts-square .form-submit,
+.contracts-square .form-secondary-button,
+.contracts-square .form-danger-button,
+.contracts-square .form-hint,
+.contracts-square .form-feedback {
+  border-radius: 0 !important;
+}
+
+.contracts-square [class*="rounded-"] {
+  border-radius: 0 !important;
+}
+
+.guest-rich-menus-square .panel,
+.guest-rich-menus-square .form-input,
+.guest-rich-menus-square .form-select,
+.guest-rich-menus-square .form-submit,
+.guest-rich-menus-square .form-secondary-button,
+.guest-rich-menus-square .form-danger-button,
+.guest-rich-menus-square .form-hint,
+.guest-rich-menus-square .form-feedback {
+  border-radius: 0 !important;
+}
+
+.guest-rich-menus-square,
+.guest-rich-menus-square * {
+  border-radius: 0 !important;
+}
+
+.guest-rich-menus-square [class*="rounded-"] {
+  border-radius: 0 !important;
 }
 
 .ai-prompt-preview-shell {

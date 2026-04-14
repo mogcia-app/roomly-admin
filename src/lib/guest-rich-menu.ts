@@ -131,14 +131,19 @@ export function createGuestRichMenuTemplateItems(
         label === "公式HP" || label === "Instagram"
           ? "external_link"
           : label === "タクシー手配" || label === "アメニティ依頼"
-            ? "handoff_category"
+            ? "ai_prompt"
             : label === "言語変更"
               ? "language"
               : "human_handoff",
       visible: true,
       sortOrder: index + 1,
       url: label === "Instagram" || label === "公式HP" ? "" : undefined,
-      handoffCategory: label === "タクシー手配" ? "taxi" : label === "アメニティ依頼" ? "amenity" : undefined,
+      prompt:
+        label === "タクシー手配"
+          ? "タクシーのご予約ですね。利用日時、行き先、必要事項を入力してください。"
+          : label === "アメニティ依頼"
+            ? "必要なアメニティを入力してください。"
+            : undefined,
     };
   });
 }

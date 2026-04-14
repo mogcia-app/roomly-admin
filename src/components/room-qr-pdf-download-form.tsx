@@ -7,7 +7,17 @@ type HotelOption = {
   name: string;
 };
 
-export function RoomQrPdfDownloadForm({ hotels }: { hotels: HotelOption[] }) {
+export function RoomQrPdfDownloadForm({
+  hotels,
+  selectedHotelId,
+  selectedHotelName,
+  square = false,
+}: {
+  hotels: HotelOption[];
+  selectedHotelId?: string;
+  selectedHotelName?: string;
+  square?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,7 +29,7 @@ export function RoomQrPdfDownloadForm({ hotels }: { hotels: HotelOption[] }) {
     setIsSubmitting(true);
 
     const formData = new FormData(event.currentTarget);
-    const hotelId = String(formData.get("hotelId") ?? "");
+    const hotelId = selectedHotelId ?? String(formData.get("hotelId") ?? "");
 
     if (!hotelId) {
       setError("hotelId は必須です。");
@@ -80,40 +90,47 @@ export function RoomQrPdfDownloadForm({ hotels }: { hotels: HotelOption[] }) {
   return (
     <div className="space-y-4">
       <form className="form-grid" onSubmit={handleSubmit}>
-        <label className="form-label">
-          対象ホテル
-          <select
-            name="hotelId"
-            required
-            defaultValue=""
-            className="form-select"
-          >
-            <option value="" disabled>
-              ホテルを選択
-            </option>
-            {hotels.map((hotel) => (
-              <option key={hotel.id} value={hotel.id}>
-                {hotel.name}
+        {selectedHotelId ? (
+          <div className={`${square ? "!rounded-none" : "rounded-2xl"} border border-[rgba(180,59,34,0.22)] bg-[rgba(246,216,203,0.52)] px-4 py-3 text-sm text-[var(--foreground)]`}>
+            対象ホテル: <strong>{selectedHotelName ?? selectedHotelId}</strong>
+            <input type="hidden" name="hotelId" value={selectedHotelId} />
+          </div>
+        ) : (
+          <label className="form-label">
+            対象ホテル
+            <select
+              name="hotelId"
+              required
+              defaultValue=""
+              className={`form-select ${square ? "!rounded-none" : ""}`}
+            >
+              <option value="" disabled>
+                ホテルを選択
               </option>
-            ))}
-          </select>
-        </label>
+              {hotels.map((hotel) => (
+                <option key={hotel.id} value={hotel.id}>
+                  {hotel.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="form-submit"
+          className={`form-submit ${square ? "!rounded-none" : ""}`}
         >
           {isSubmitting ? "PDF生成中..." : "客室QR PDF を一括ダウンロード"}
         </button>
       </form>
 
       {error ? (
-        <p className="form-feedback form-feedback-error">{error}</p>
+        <p className={`form-feedback form-feedback-error ${square ? "!rounded-none" : ""}`}>{error}</p>
       ) : null}
 
       {message ? (
-        <p className="form-feedback form-feedback-success">{message}</p>
+        <p className={`form-feedback form-feedback-success ${square ? "!rounded-none" : ""}`}>{message}</p>
       ) : null}
     </div>
   );

@@ -10,7 +10,13 @@ type ProvisionResult = {
   role: string;
 };
 
-export function HotelAdminProvisionForm() {
+export function HotelAdminProvisionForm({
+  onProvisioned,
+  square = false,
+}: {
+  onProvisioned?: (hotel: { id: string; name: string }) => void;
+  square?: boolean;
+}) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +30,7 @@ export function HotelAdminProvisionForm() {
 
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const hotelName = String(formData.get("hotelName") ?? "").trim();
 
     const response = await fetch("/api/admin/hotels", {
       method: "POST",
@@ -43,6 +50,7 @@ export function HotelAdminProvisionForm() {
     }
 
     setResult(payload.provisioned);
+    onProvisioned?.({ id: payload.provisioned.hotelId, name: hotelName });
     form.reset();
     router.refresh();
   }
@@ -55,7 +63,7 @@ export function HotelAdminProvisionForm() {
           <input
             name="hotelName"
             required
-            className="form-input"
+            className={`form-input ${square ? "!rounded-none" : ""}`}
             placeholder="Akari Ryokan"
           />
         </label>
@@ -66,7 +74,7 @@ export function HotelAdminProvisionForm() {
             name="plan"
             required
             defaultValue="Basic"
-            className="form-input"
+            className={`form-input ${square ? "!rounded-none" : ""}`}
           />
         </label>
 
@@ -76,7 +84,7 @@ export function HotelAdminProvisionForm() {
             name="contractStartDate"
             type="date"
             required
-            className="form-input"
+            className={`form-input ${square ? "!rounded-none" : ""}`}
           />
         </label>
 
@@ -86,17 +94,17 @@ export function HotelAdminProvisionForm() {
             name="contractEndDate"
             type="date"
             required
-            className="form-input"
+            className={`form-input ${square ? "!rounded-none" : ""}`}
           />
         </label>
 
         <label className="form-label">
-          hotel_admin メールアドレス
+          ホテル管理者メールアドレス
           <input
             name="hotelAdminEmail"
             type="email"
             required
-            className="form-input"
+            className={`form-input ${square ? "!rounded-none" : ""}`}
             placeholder="owner@example.com"
           />
         </label>
@@ -108,7 +116,7 @@ export function HotelAdminProvisionForm() {
             type="password"
             minLength={8}
             required
-            className="form-input"
+            className={`form-input ${square ? "!rounded-none" : ""}`}
             placeholder="8文字以上"
           />
         </label>
@@ -116,19 +124,19 @@ export function HotelAdminProvisionForm() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="form-submit"
+          className={`form-submit ${square ? "!rounded-none" : ""}`}
         >
-          {isSubmitting ? "作成中..." : "hotel_admin を作成"}
+          {isSubmitting ? "作成中..." : "ホテルを作成"}
         </button>
       </form>
 
       {error ? (
-        <p className="form-feedback form-feedback-error">{error}</p>
+        <p className={`form-feedback form-feedback-error ${square ? "!rounded-none" : ""}`}>{error}</p>
       ) : null}
 
       {result ? (
-        <div className="form-feedback form-feedback-success">
-          hotel_admin アカウントを発行しました。対象メールは <strong>{result.email}</strong>、
+        <div className={`form-feedback form-feedback-success ${square ? "!rounded-none" : ""}`}>
+          ホテル管理者アカウントを発行しました。対象メールは <strong>{result.email}</strong>、
           発行された hotel_id は <strong>{result.hotelId}</strong>、Auth uid は{" "}
           <strong>{result.userId}</strong> です。
         </div>
