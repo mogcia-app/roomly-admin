@@ -6,6 +6,7 @@ import { HearingSheetLinkForm } from "@/components/hearing-sheet-link-form";
 import { HotelAdminProvisionForm } from "@/components/hotel-admin-provision-form";
 import { RoomCountSetupForm } from "@/components/room-count-setup-form";
 import { RoomQrWorkflowForm } from "@/components/room-qr-workflow-form";
+import { TrialHotelProvisionForm } from "@/components/trial-hotel-provision-form";
 import { SectionCard } from "@/components/ui";
 
 type HotelOption = {
@@ -77,14 +78,17 @@ export function HotelsWorkspace({
     ? roomQrReplacementAudits.filter((audit) => audit.hotelId === selectedHotelId)
     : roomQrReplacementAudits;
 
-  function handleProvisionedHotel(hotel: { id: string; name: string }) {
+  function handleProvisionedHotel(
+    hotel: { id: string; name: string },
+    nextStep: "hearing-sheet" | "rooms" = "hearing-sheet",
+  ) {
     setHotelOptions((current) =>
       current.some((item) => item.id === hotel.id) ? current : [hotel, ...current],
     );
     setSelectedHotelId(hotel.id);
     setIsHotelPickerOpen(false);
     window.setTimeout(() => {
-      document.getElementById("hearing-sheet")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById(nextStep)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   }
 
@@ -101,6 +105,21 @@ export function HotelsWorkspace({
           </button>
         </div>
       </div>
+
+      <section id="trial-accounts" className="grid scroll-mt-24 gap-6">
+        <SectionCard
+          title="お試し用アカウント登録"
+          description="ホテル名、メールアドレス、仮パスワードだけでテスト用ホテルを作成します。ヒアリングは飛ばして、そのまま客室登録とQR出力へ進めます。"
+          className="!rounded-none"
+        >
+          <div className="rounded-none border border-[var(--border)] bg-white p-4">
+            <p className="text-sm font-semibold text-stone-950">お試し用ホテル作成</p>
+            <div className="mt-4">
+              <TrialHotelProvisionForm onProvisioned={handleProvisionedHotel} />
+            </div>
+          </div>
+        </SectionCard>
+      </section>
 
       <section id="accounts" className="grid scroll-mt-24 gap-6">
         <SectionCard

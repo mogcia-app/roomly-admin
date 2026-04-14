@@ -9,6 +9,10 @@ function readJsonString(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function formatDateString(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireSuperAdminRequest(request);
@@ -27,6 +31,7 @@ export async function POST(request: NextRequest) {
   try {
     await requireSuperAdminRequest(request);
     const contentType = request.headers.get("content-type") ?? "";
+    let provisionMode = "standard";
     let hotelName = "";
     let plan = "";
     let contractStartDate = "";
@@ -36,6 +41,7 @@ export async function POST(request: NextRequest) {
 
     if (contentType.includes("application/json")) {
       const body = (await request.json()) as Record<string, unknown>;
+      provisionMode = String(body.provisionMode ?? "standard").trim() || "standard";
       hotelName = String(body.hotelName ?? "").trim();
       plan = String(body.plan ?? "").trim();
       contractStartDate = String(body.contractStartDate ?? "").trim();
@@ -44,6 +50,7 @@ export async function POST(request: NextRequest) {
       temporaryPassword = String(body.temporaryPassword ?? "").trim();
     } else {
       const formData = await request.formData();
+      provisionMode = readJsonString(formData.get("provisionMode")) || "standard";
       hotelName = readJsonString(formData.get("hotelName"));
       plan = readJsonString(formData.get("plan"));
       contractStartDate = readJsonString(formData.get("contractStartDate"));
@@ -52,10 +59,28 @@ export async function POST(request: NextRequest) {
       temporaryPassword = readJsonString(formData.get("temporaryPassword"));
     }
 
-    if (!hotelName || !plan || !contractStartDate || !contractEndDate || !hotelAdminEmail || !temporaryPassword) {
+    if (provisionMode === "trial") {
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 7);
+      plan = plan || "Trial";
+      contractStartDate = contractStartDate || formatDateString(startDate);
+      contractEndDate = contractEndDate || formatDateString(endDate);
+    } else {
+      plan = plan || "Basic";
+    }
+
+    if (!hotelName || !hotelAdminEmail || !temporaryPassword) {
+      return NextResponse.json(
+        { error: "ホテル名、ホテル管理者メールアドレス、仮パスワードは必須です。" },
+        { status: 400 },
+      );
+    }
+
+    if (!plan || !contractStartDate || !contractEndDate) {
       return NextResponse.json(
         {
-          error: "ホテル名、プラン、契約開始日、契約終了日、ホテル管理者メールアドレス、仮パスワードは必須です。",
+          error: "ホテル名、契約開始日、契約終了日、ホテル管理者メールアドレス、仮パスワードは必須です。",
         },
         { status: 400 },
       );
