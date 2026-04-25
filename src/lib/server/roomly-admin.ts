@@ -868,6 +868,12 @@ export async function submitHearingSheetByToken(token: string, payload: HearingS
     throw new Error("有効なヒアリングシートURLではありません。");
   }
 
+  const hotel = await getHotelById(link.hotelId);
+
+  if (!hotel) {
+    throw new Error("対象ホテルが見つかりません。");
+  }
+
   const { db } = getFirebaseAdminServices();
   const now = FieldValue.serverTimestamp();
   const sheetRef = db.collection("hearing_sheets").doc(link.hotelId);
@@ -878,6 +884,7 @@ export async function submitHearingSheetByToken(token: string, payload: HearingS
     sheetRef,
     {
       hotel_id: link.hotelId,
+      hotel_name: hotel.name,
       contact_name: payload.contactName,
       contact_email: payload.contactEmail,
       operations: {
@@ -1010,6 +1017,7 @@ export async function saveHearingSheetByHotelId(hotelId: string, payload: Hearin
   await db.collection("hearing_sheets").doc(hotelId).set(
     {
       hotel_id: hotelId,
+      hotel_name: hotel.name,
       contact_name: payload.contactName,
       contact_email: payload.contactEmail,
       operations: {
